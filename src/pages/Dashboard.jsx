@@ -1,12 +1,28 @@
 import { CalendarPlus, Library, Music2, Monitor } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import SongCard from '../components/SongCard';
 import { getSongs, getUpcomingLineup } from '../utils/storage';
 
 export default function Dashboard() {
-  const songs = getSongs();
-  const upcoming = getUpcomingLineup();
+  const [songs, setSongs] = useState([]);
+  const [upcoming, setUpcoming] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      const [songsData, upcomingData] = await Promise.all([
+        getSongs(),
+        getUpcomingLineup()
+      ]);
+      setSongs(songsData);
+      setUpcoming(upcomingData);
+      setLoading(false);
+    }
+    loadData();
+  }, []);
+
   const recentSongs = songs.slice(0, 3);
 
   return (

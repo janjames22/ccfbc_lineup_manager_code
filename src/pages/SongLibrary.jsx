@@ -1,5 +1,5 @@
 import { Plus, Search } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
 import PageHeader from '../components/PageHeader';
@@ -8,11 +8,21 @@ import { KEYS } from '../utils/constants';
 import { getSongs } from '../utils/storage';
 
 export default function SongLibrary() {
-  const songs = getSongs();
+  const [songs, setSongs] = useState([]);
   const [query, setQuery] = useState('');
   const [keyFilter, setKeyFilter] = useState('');
   const [category, setCategory] = useState('');
   const [language, setLanguage] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadSongs() {
+      const data = await getSongs();
+      setSongs(data);
+      setLoading(false);
+    }
+    loadSongs();
+  }, []);
 
   const categories = [...new Set(songs.map((song) => song.category).filter(Boolean))];
   const languages = [...new Set(songs.map((song) => song.language).filter(Boolean))];

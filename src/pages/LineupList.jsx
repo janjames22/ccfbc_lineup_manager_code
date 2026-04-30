@@ -1,11 +1,22 @@
 import { CalendarPlus, Eye, Pencil, Printer } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
 import PageHeader from '../components/PageHeader';
 import { getLineups } from '../utils/storage';
 
 export default function LineupList() {
-  const lineups = getLineups();
+  const [lineups, setLineups] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadLineups() {
+      const data = await getLineups();
+      setLineups(data);
+      setLoading(false);
+    }
+    loadLineups();
+  }, []);
 
   return (
     <main className="page-shell">

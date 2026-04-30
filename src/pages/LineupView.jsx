@@ -1,14 +1,41 @@
 import { ArrowLeft, Monitor, Pencil, Printer, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import TeamAssignments from '../components/TeamAssignments';
-import { deleteLineup, getLineupById, getSongById } from '../utils/storage';
+import { deleteLineup, getLineupById, getSongs } from '../utils/storage';
 import { getSemitoneDelta, transposeChords } from '../utils/transposeChords';
 
 export default function LineupView() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const lineup = getLineupById(id);
+  const [lineup, setLineup] = useState(null);
+  const [songsMap, setSongsMap] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      const [lineupData, allSongs] = await Promise.all([
+        getLineupById(id),
+        getSongs()
+      ]);
+      setLineup(lineupData);
+      
+      const map = {};
+      allSongs.forEach(s => map[s.id] = s);
+      setSongsMap(map);
+      setLoading(false);
+    }
+    loadData();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <main className="page-shell">
+        <p className="text-slate-600">Loading...</p>
+      </main>
+    );
+  }
 
   if (!lineup) {
     return (
@@ -19,9 +46,9 @@ export default function LineupView() {
     );
   }
 
-  const remove = () => {
+  const remove = async () => {
     if (confirm(`Delete lineup for ${lineup.date}?`)) {
-      deleteLineup(lineup.id);
+      await deleteLineup(lineup.id);
       navigate('/lineups');
     }
   };
@@ -46,7 +73,7 @@ export default function LineupView() {
       <section className="grid gap-6 lg:grid-cols-[1fr_0.75fr]">
         <div className="space-y-4">
           {lineup.songs.map((lineupSong, index) => {
-            const song = getSongById(lineupSong.songId);
+            const song = songsMap[lineupSong.songId];
             const delta = song ? getSemitoneDelta(song.originalKey, lineupSong.selectedKey) : 0;
             return (
               <article key={`${lineupSong.songId}-${index}`} className="panel">

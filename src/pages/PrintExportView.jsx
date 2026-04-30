@@ -1,12 +1,39 @@
 import { ArrowLeft, Printer } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import TeamAssignments from '../components/TeamAssignments';
-import { getLineupById, getSongById } from '../utils/storage';
+import { getLineupById, getSongById, getSongs } from '../utils/storage';
 import { getSemitoneDelta, transposeChords } from '../utils/transposeChords';
 
 export default function PrintExportView() {
   const { id } = useParams();
-  const lineup = getLineupById(id);
+  const [lineup, setLineup] = useState(null);
+  const [songsMap, setSongsMap] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      const lineupData = await getLineupById(id);
+      setLineup(lineupData);
+      
+      if (lineupData?.songs?.length) {
+        const allSongs = await getSongs();
+        const map = {};
+        allSongs.forEach(s => map[s.id] = s);
+        setSongsMap(map);
+      }
+      setLoading(false);
+    }
+    loadData();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <main className="page-shell">
+        <p className="text-slate-600">Loading...</p>
+      </main>
+    );
+  }
 
   if (!lineup) {
     return (
@@ -34,7 +61,7 @@ export default function PrintExportView() {
         <h2 className="section-title">Song Lineup</h2>
         <div className="mt-4 space-y-6">
           {lineup.songs.map((lineupSong, index) => {
-            const song = getSongById(lineupSong.songId);
+            const song = songsMap[lineupSong.songId];
             const delta = song ? getSemitoneDelta(song.originalKey, lineupSong.selectedKey) : 0;
             return (
               <article key={`${lineupSong.songId}-${index}`} className="break-inside-avoid border-b border-slate-200 pb-6">

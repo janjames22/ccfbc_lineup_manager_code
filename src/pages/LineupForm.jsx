@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import TeamAssignments from '../components/TeamAssignments';
@@ -25,9 +25,23 @@ const blankLineup = {
 export default function LineupForm() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const songs = getSongs();
-  const [lineup, setLineup] = useState(id ? getLineupById(id) || blankLineup : blankLineup);
+  const [songs, setSongs] = useState([]);
+  const [lineup, setLineup] = useState(blankLineup);
   const [selectedSongId, setSelectedSongId] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      const [songsData, lineupData] = await Promise.all([
+        getSongs(),
+        id ? getLineupById(id) : null
+      ]);
+      setSongs(songsData);
+      setLineup(lineupData || blankLineup);
+      setLoading(false);
+    }
+    loadData();
+  }, [id]);
 
   const update = (field, value) => setLineup((current) => ({ ...current, [field]: value }));
   const updateLineupSong = (index, field, value) => update('songs', lineup.songs.map((song, itemIndex) => (itemIndex === index ? { ...song, [field]: value } : song)));
@@ -60,13 +74,21 @@ export default function LineupForm() {
     update('songs', nextSongs.map((song, itemIndex) => ({ ...song, order: itemIndex + 1 })));
   };
 
-  const save = (event) => {
+  const save = async (event) => {
     event.preventDefault();
-    const saved = saveLineup(lineup);
+    const saved = await saveLineup(lineup);
     navigate(`/lineups/${saved.id}`);
   };
 
   const availableSongs = songs.filter((song) => !lineup.songs.some((item) => item.songId === song.id));
+
+  if (loading) {
+    return (
+      <main className="page-shell">
+        <p className="text-slate-600">Loading...</p>
+      </main>
+    );
+  }
 
   return (
     <main className="page-shell">

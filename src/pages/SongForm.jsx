@@ -1,5 +1,5 @@
 import { Plus, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import { KEYS, SECTION_TYPES } from '../utils/constants';
@@ -21,8 +21,19 @@ const blankSong = {
 export default function SongForm() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const existing = id ? getSongById(id) : null;
-  const [song, setSong] = useState(existing || blankSong);
+  const [song, setSong] = useState(blankSong);
+  const [loading, setLoading] = useState(!!id);
+
+  useEffect(() => {
+    async function loadSong() {
+      if (id) {
+        const existing = await getSongById(id);
+        setSong(existing || blankSong);
+      }
+      setLoading(false);
+    }
+    loadSong();
+  }, [id]);
 
   const update = (field, value) => setSong((current) => ({ ...current, [field]: value }));
   const updateSection = (index, field, value) => {
@@ -37,9 +48,9 @@ export default function SongForm() {
     update('lyricsMonitor', song.lyricsMonitor.filter((_, itemIndex) => itemIndex !== index));
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
-    const saved = saveSong(song);
+    const saved = await saveSong(song);
     navigate(`/songs/${saved.id}`);
   };
 

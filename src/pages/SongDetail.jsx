@@ -1,5 +1,5 @@
 import { ArrowLeft, Monitor, Pencil, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import { formatBpm } from '../utils/constants';
@@ -9,8 +9,26 @@ import { getTransposedKey, transposeChords } from '../utils/transposeChords';
 export default function SongDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const song = getSongById(id);
+  const [song, setSong] = useState(null);
   const [transposeAmount, setTransposeAmount] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadSong() {
+      const data = await getSongById(id);
+      setSong(data);
+      setLoading(false);
+    }
+    loadSong();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <main className="page-shell">
+        <p className="text-slate-600">Loading...</p>
+      </main>
+    );
+  }
 
   if (!song) {
     return (
@@ -24,9 +42,9 @@ export default function SongDetail() {
   const currentKey = getTransposedKey(song.originalKey, transposeAmount);
   const transposedChart = transposeChords(song.chordChart, transposeAmount);
 
-  const remove = () => {
+  const remove = async () => {
     if (confirm(`Delete "${song.title}"?`)) {
-      deleteSong(song.id);
+      await deleteSong(song.id);
       navigate('/songs');
     }
   };

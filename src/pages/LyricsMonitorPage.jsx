@@ -1,16 +1,42 @@
 import { ArrowLeft } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import LyricsMonitor from '../components/LyricsMonitor';
-import { getLineupById, getSongById } from '../utils/storage';
+import { getLineupById, getSongById, getSongs } from '../utils/storage';
 
 export default function LyricsMonitorPage() {
   const { id, songId } = useParams();
+  const [lineup, setLineup] = useState(null);
+  const [song, setSong] = useState(null);
+  const [songsMap, setSongsMap] = useState({});
   const [index, setIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      if (songId) {
+        const songData = await getSongById(songId);
+        setSong(songData);
+      } else if (id) {
+        const lineupData = await getLineupById(id);
+        setLineup(lineupData);
+        // Also load all songs for the lineup
+        if (lineupData?.songs?.length) {
+          const allSongs = await getSongs();
+          const map = {};
+          allSongs.forEach(s => map[s.id] = s);
+          setSongsMap(map);
+        }
+      }
+      setLoading(false);
+    }
+    loadData();
+  }, [id, songId]);
 
   const monitorData = useMemo(() => {
+    if (loading) return null;
+
     if (songId) {
-      const song = getSongById(songId);
       return {
         title: song?.title || 'Song Monitor',
         keyName: song?.selectedKey || song?.originalKey || '',
@@ -19,10 +45,9 @@ export default function LyricsMonitorPage() {
       };
     }
 
-    const lineup = getLineupById(id);
     const sections = lineup?.songs.flatMap((lineupSong) => {
-      const song = getSongById(lineupSong.songId);
-      const cues = song?.lyricsMonitor?.length ? song.lyricsMonitor : [{ section: 'Song Cue', text: lineupSong.notes || 'No cue text added.', vocalNotes: '', repeatCount: '' }];
+      const linkedSong = songsMap[lineupSong.songId];
+      const cues = linkedSong?.lyricsMonitor?.length ? linkedSong.lyricsMonitor : [{ section: 'Song Cue', text: lineupSong.notes || 'No cue text added.', vocalNotes: '', repeatCount: '' }];
       return cues.map((cue) => ({
         ...cue,
         section: `${lineupSong.title} - ${cue.section}`,
@@ -37,7 +62,15 @@ export default function LyricsMonitorPage() {
       sections,
       backTo: lineup ? `/lineups/${lineup.id}` : '/lineups',
     };
-  }, [id, songId, index]);
+  }, [id, songId, index, lineup, song, songsMap, loading]);
+
+  if (loading || !monitorData) {
+    return (
+      <main className="page-shell">
+        <p className="text-slate-600">Loading...</p>
+      </main>
+    );
+  }
 
   return (
     <LyricsMonitor
