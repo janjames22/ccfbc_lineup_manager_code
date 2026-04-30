@@ -1,0 +1,80 @@
+import { ArrowLeft, Printer } from 'lucide-react';
+import { Link, useParams } from 'react-router-dom';
+import TeamAssignments from '../components/TeamAssignments';
+import { getLineupById, getSongById } from '../utils/storage';
+import { getSemitoneDelta, transposeChords } from '../utils/transposeChords';
+
+export default function PrintExportView() {
+  const { id } = useParams();
+  const lineup = getLineupById(id);
+
+  if (!lineup) {
+    return (
+      <main className="page-shell">
+        <p className="text-slate-600">Lineup not found.</p>
+        <Link className="btn-primary mt-4" to="/lineups">Back to Lineups</Link>
+      </main>
+    );
+  }
+
+  return (
+    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mb-6 flex flex-wrap gap-2 print:hidden">
+        <Link className="btn-secondary" to={`/lineups/${lineup.id}`}><ArrowLeft size={18} aria-hidden="true" /> Back</Link>
+        <button className="btn-primary" type="button" onClick={() => window.print()}><Printer size={18} aria-hidden="true" /> Print / Export</button>
+      </div>
+
+      <header className="border-b border-slate-300 pb-5">
+        <p className="text-sm font-semibold text-blue-700">Sunday Lineup</p>
+        <h1 className="text-3xl font-bold text-slate-950">{lineup.date} • {lineup.serviceTime}</h1>
+        <p className="mt-2 text-slate-700">Worship Leader: {lineup.worshipLeader || 'TBD'}</p>
+      </header>
+
+      <section className="mt-6">
+        <h2 className="section-title">Song Lineup</h2>
+        <div className="mt-4 space-y-6">
+          {lineup.songs.map((lineupSong, index) => {
+            const song = getSongById(lineupSong.songId);
+            const delta = song ? getSemitoneDelta(song.originalKey, lineupSong.selectedKey) : 0;
+            return (
+              <article key={`${lineupSong.songId}-${index}`} className="break-inside-avoid border-b border-slate-200 pb-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-950">{index + 1}. {lineupSong.title}</h3>
+                    {lineupSong.notes && <p className="mt-1 text-sm text-slate-700">{lineupSong.notes}</p>}
+                  </div>
+                  <span className="font-bold text-blue-700">Key: {lineupSong.selectedKey}</span>
+                </div>
+                <pre className="mt-3 whitespace-pre-wrap rounded bg-slate-50 p-4 font-mono text-sm">{song ? transposeChords(song.chordChart, delta) : 'Song not found in library.'}</pre>
+                {song?.lyricsMonitor?.length > 0 && (
+                  <div className="mt-3 rounded border border-slate-200 p-3">
+                    <p className="mb-2 text-sm font-semibold text-slate-700">Lyrics Monitor Cues</p>
+                    {song.lyricsMonitor.map((cue, cueIndex) => (
+                      <p key={`${cue.section}-${cueIndex}`} className="text-sm text-slate-700">
+                        <strong>{cue.section}:</strong> {cue.text || 'No cue text.'}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="mt-8 break-inside-avoid">
+        <h2 className="section-title">Team Assignments</h2>
+        <div className="mt-4">
+          <TeamAssignments musicians={lineup.musicians} readOnly />
+        </div>
+      </section>
+
+      {lineup.generalNotes && (
+        <section className="mt-8 break-inside-avoid">
+          <h2 className="section-title">General Reminders</h2>
+          <p className="mt-2 whitespace-pre-wrap text-slate-700">{lineup.generalNotes}</p>
+        </section>
+      )}
+    </main>
+  );
+}
