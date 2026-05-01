@@ -18,7 +18,9 @@ export default function SongLibrary() {
   useEffect(() => {
     async function loadSongs() {
       try {
+        console.log('SongLibrary: Loading songs...');
         const data = await getSongs();
+        console.log('SongLibrary: Songs loaded:', data);
         setSongs(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error("Failed to load songs:", error);

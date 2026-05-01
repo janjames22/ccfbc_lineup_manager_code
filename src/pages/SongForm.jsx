@@ -68,7 +68,8 @@ export default function SongForm() {
       navigate('/songs');
     } catch (error) {
       console.error("Failed to save song:", error);
-      setError('Unable to save this song. Please try again.');
+      // Show the actual error message from Supabase or storage
+      setError(error.message || 'Unable to save this song. Please try again.');
     } finally {
       setSaving(false);
     }

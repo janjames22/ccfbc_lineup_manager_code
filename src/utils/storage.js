@@ -252,6 +252,7 @@ function normalizeLineup(lineup) {
 export async function getSongs() {
   // Try Supabase first
   if (isSupabaseConfigured()) {
+    console.log('Loading songs from Supabase...');
     try {
       const { data, error } = await withTimeout(
         supabase
@@ -264,11 +265,14 @@ export async function getSongs() {
       if (error) {
         console.error('Supabase getSongs error:', error.message);
       } else if (Array.isArray(data)) {
+        console.log('Songs loaded from Supabase:', data.length);
         return data.map(toCamelCaseSong).filter(Boolean);
       }
     } catch (err) {
       console.error('Supabase getSongs failed:', err);
     }
+  } else {
+    console.log('Supabase not configured, using localStorage fallback for getSongs');
   }
   
   // Fallback to localStorage
@@ -306,11 +310,13 @@ export async function getSongById(id) {
 
 export async function saveSong(song) {
   const nextSong = normalizeSong(song);
+  console.log('Saving song payload:', nextSong);
   
   // Try Supabase first
   if (isSupabaseConfigured()) {
     try {
       const snakeSong = toSnakeCaseSong(nextSong);
+      console.log('Saving to Supabase with snake_case fields:', snakeSong);
       
       // Check if song exists
       const { data: existing } = await withTimeout(
@@ -348,12 +354,19 @@ export async function saveSong(song) {
       
       if (result.error) {
         console.error('Supabase saveSong error:', result.error.message);
+        // Don't fall through to localStorage - throw error to show in UI
+        throw new Error(result.error.message);
       } else if (result.data) {
+        console.log('Supabase saved song:', result.data);
         return toCamelCaseSong(result.data);
       }
     } catch (err) {
       console.error('Supabase saveSong failed:', err);
+      // Re-throw to show in UI
+      throw err;
     }
+  } else {
+    console.log('Supabase not configured, using localStorage fallback for saveSong');
   }
   
   // Fallback to localStorage
