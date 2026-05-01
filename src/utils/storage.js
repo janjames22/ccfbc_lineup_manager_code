@@ -4,6 +4,7 @@ import { emptyMusicians } from './constants';
 const SONGS_KEY = 'worshipSongs';
 const LINEUPS_KEY = 'worshipLineups';
 const SUPABASE_TIMEOUT_MS = 10000;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const sampleSong = {
   id: 'song_sample_001',
@@ -38,10 +39,13 @@ const sampleSong = {
 // Field Mapping Functions
 // ============================================
 
+function isValidUUID(id) {
+  return typeof id === 'string' && UUID_PATTERN.test(id);
+}
+
 // Convert camelCase app fields to snake_case Supabase columns
 function toSnakeCaseSong(song) {
-  return {
-    id: song.id,
+  const payload = {
     title: song.title,
     artist: song.artist || '',
     original_key: song.originalKey || 'C',
@@ -55,6 +59,12 @@ function toSnakeCaseSong(song) {
     created_at: song.createdAt || new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
+
+  if (isValidUUID(song.id)) {
+    payload.id = song.id;
+  }
+
+  return payload;
 }
 
 function toSnakeCaseLineup(lineup) {
@@ -283,7 +293,7 @@ export async function getSongById(id) {
   if (!id) return null;
 
   // Try Supabase first
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isValidUUID(id)) {
     try {
       const { data, error } = await withTimeout(
         supabase
@@ -317,19 +327,22 @@ export async function saveSong(song) {
     try {
       const snakeSong = toSnakeCaseSong(nextSong);
       console.log('Saving to Supabase with snake_case fields:', snakeSong);
+      const hasSupabaseId = isValidUUID(nextSong.id);
       
-      // Check if song exists
-      const { data: existing } = await withTimeout(
-        supabase
-          .from('songs')
-          .select('id')
-          .eq('id', nextSong.id)
-          .single(),
-        'Supabase findSong'
-      );
+      // Check if song exists only when the app id is already a Supabase UUID.
+      const { data: existing } = hasSupabaseId
+        ? await withTimeout(
+            supabase
+              .from('songs')
+              .select('id')
+              .eq('id', nextSong.id)
+              .single(),
+            'Supabase findSong'
+          )
+        : { data: null };
       
       let result;
-      if (existing) {
+      if (existing && hasSupabaseId) {
         // Update existing
         result = await withTimeout(
           supabase
@@ -342,10 +355,13 @@ export async function saveSong(song) {
         );
       } else {
         // Insert new
+        const insertPayload = { ...snakeSong };
+        delete insertPayload.id;
+
         result = await withTimeout(
           supabase
             .from('songs')
-            .insert(snakeSong)
+            .insert(insertPayload)
             .select()
             .single(),
           'Supabase insertSong'
@@ -375,7 +391,7 @@ export async function saveSong(song) {
 
 export async function deleteSong(id) {
   // Try Supabase first
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isValidUUID(id)) {
     try {
       const { error } = await withTimeout(
         supabase
