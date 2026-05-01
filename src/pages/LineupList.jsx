@@ -11,9 +11,15 @@ export default function LineupList() {
 
   useEffect(() => {
     async function loadLineups() {
-      const data = await getLineups();
-      setLineups(data);
-      setLoading(false);
+      try {
+        const data = await getLineups();
+        setLineups(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Failed to load lineups:', error);
+        setLineups([]);
+      } finally {
+        setLoading(false);
+      }
     }
     loadLineups();
   }, []);

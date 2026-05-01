@@ -23,14 +23,23 @@ export default function SongForm() {
   const navigate = useNavigate();
   const [song, setSong] = useState(blankSong);
   const [loading, setLoading] = useState(!!id);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     async function loadSong() {
-      if (id) {
-        const existing = await getSongById(id);
-        setSong(existing || blankSong);
+      try {
+        if (id) {
+          const existing = await getSongById(id);
+          setSong(existing || blankSong);
+        }
+      } catch (error) {
+        console.error("Failed to load songs:", error);
+        setError('Unable to load this song. Please try again.');
+        setSong(blankSong);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     loadSong();
   }, [id]);
@@ -50,9 +59,28 @@ export default function SongForm() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    const saved = await saveSong(song);
-    navigate(`/songs/${saved.id}`);
+    setSaving(true);
+    setError('');
+
+    try {
+      const saved = await saveSong(song);
+      if (!saved?.id) throw new Error('Song was not saved.');
+      navigate('/songs');
+    } catch (error) {
+      console.error("Failed to save song:", error);
+      setError('Unable to save this song. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <main className="page-shell">
+        <p className="text-slate-600">Loading...</p>
+      </main>
+    );
+  }
 
   return (
     <main className="page-shell">
@@ -60,6 +88,7 @@ export default function SongForm() {
 
       <form className="grid gap-6 lg:grid-cols-[1fr_0.75fr]" onSubmit={handleSubmit}>
         <section className="panel space-y-5">
+          {error && <p className="text-sm font-semibold text-red-700">{error}</p>}
           <div className="grid gap-4 sm:grid-cols-2">
             <label>
               <span className="label">Song Title *</span>
@@ -147,7 +176,7 @@ export default function SongForm() {
             ))}
           </div>
 
-          <button className="btn-primary w-full justify-center" type="submit">{id ? 'Update Song' : 'Save Song'}</button>
+          <button className="btn-primary w-full justify-center" type="submit" disabled={saving}>{saving ? 'Saving...' : id ? 'Update Song' : 'Save Song'}</button>
         </aside>
       </form>
     </main>

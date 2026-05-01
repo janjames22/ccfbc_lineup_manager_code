@@ -2,7 +2,7 @@ import { ArrowLeft, Printer } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import TeamAssignments from '../components/TeamAssignments';
-import { getLineupById, getSongById, getSongs } from '../utils/storage';
+import { getLineupById, getSongs } from '../utils/storage';
 import { getSemitoneDelta, transposeChords } from '../utils/transposeChords';
 
 export default function PrintExportView() {
@@ -13,16 +13,23 @@ export default function PrintExportView() {
 
   useEffect(() => {
     async function loadData() {
-      const lineupData = await getLineupById(id);
-      setLineup(lineupData);
-      
-      if (lineupData?.songs?.length) {
-        const allSongs = await getSongs();
-        const map = {};
-        allSongs.forEach(s => map[s.id] = s);
-        setSongsMap(map);
+      try {
+        const lineupData = await getLineupById(id);
+        setLineup(lineupData);
+        
+        if (lineupData?.songs?.length) {
+          const allSongs = await getSongs();
+          const map = {};
+          (Array.isArray(allSongs) ? allSongs : []).forEach(s => map[s.id] = s);
+          setSongsMap(map);
+        }
+      } catch (error) {
+        console.error("Failed to load songs:", error);
+        setLineup(null);
+        setSongsMap({});
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     loadData();
   }, [id]);

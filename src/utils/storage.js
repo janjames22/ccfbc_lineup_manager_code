@@ -3,6 +3,7 @@ import { emptyMusicians } from './constants';
 
 const SONGS_KEY = 'worshipSongs';
 const LINEUPS_KEY = 'worshipLineups';
+const SUPABASE_TIMEOUT_MS = 10000;
 
 const sampleSong = {
   id: 'song_sample_001',
@@ -73,6 +74,10 @@ function toSnakeCaseLineup(lineup) {
 // Convert snake_case Supabase columns to camelCase app fields
 function toCamelCaseSong(dbSong) {
   if (!dbSong) return null;
+  const lyricsMonitor = typeof dbSong.lyrics_monitor === 'string'
+    ? safeParse(dbSong.lyrics_monitor, [])
+    : (dbSong.lyrics_monitor || []);
+
   return {
     id: dbSong.id,
     title: dbSong.title,
@@ -83,9 +88,7 @@ function toCamelCaseSong(dbSong) {
     category: dbSong.category || 'Worship',
     language: dbSong.language || '',
     chordChart: dbSong.chord_chart || '',
-    lyricsMonitor: typeof dbSong.lyrics_monitor === 'string' 
-      ? JSON.parse(dbSong.lyrics_monitor) 
-      : (dbSong.lyrics_monitor || []),
+    lyricsMonitor: Array.isArray(lyricsMonitor) ? lyricsMonitor : [],
     notes: dbSong.notes || '',
     createdAt: dbSong.created_at,
     updatedAt: dbSong.updated_at,
@@ -94,15 +97,20 @@ function toCamelCaseSong(dbSong) {
 
 function toCamelCaseLineup(dbLineup) {
   if (!dbLineup) return null;
+  const songs = typeof dbLineup.songs === 'string'
+    ? safeParse(dbLineup.songs, [])
+    : (dbLineup.songs || []);
+  const musicians = typeof dbLineup.musicians === 'string'
+    ? safeParse(dbLineup.musicians, {})
+    : (dbLineup.musicians || {});
+
   return {
     id: dbLineup.id,
     date: dbLineup.date || '',
     serviceTime: dbLineup.service_time || '9:00 AM',
     worshipLeader: dbLineup.worship_leader || '',
-    songs: typeof dbLineup.songs === 'string' ? JSON.parse(dbLineup.songs) : (dbLineup.songs || []),
-    musicians: typeof dbLineup.musicians === 'string' 
-      ? JSON.parse(dbLineup.musicians) 
-      : (dbLineup.musicians || {}),
+    songs: Array.isArray(songs) ? songs : [],
+    musicians,
     generalNotes: dbLineup.general_notes || '',
     createdAt: dbLineup.created_at,
     updatedAt: dbLineup.updated_at,
@@ -121,21 +129,88 @@ function safeParse(value, fallback) {
   }
 }
 
+async function withTimeout(promise, label) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} timed out`)), SUPABASE_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 function uid(prefix) {
-  if (crypto?.randomUUID) return `${prefix}_${crypto.randomUUID()}`;
+  if (globalThis.crypto?.randomUUID) return `${prefix}_${globalThis.crypto.randomUUID()}`;
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
 function read(key, fallback) {
-  const value = safeParse(localStorage.getItem(key), fallback);
-  if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(value));
-  return value;
+  try {
+    const stored = localStorage.getItem(key);
+    const value = safeParse(stored, fallback);
+    if (!stored) localStorage.setItem(key, JSON.stringify(value));
+    return value;
+  } catch (error) {
+    console.error(`Failed to read ${key} from localStorage:`, error);
+    return fallback;
+  }
 }
 
 function write(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
-  window.dispatchEvent(new Event('worship-storage-change'));
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    window.dispatchEvent(new Event('worship-storage-change'));
+  } catch (error) {
+    console.error(`Failed to write ${key} to localStorage:`, error);
+  }
   return value;
+}
+
+function getLocalSongs() {
+  const songs = read(SONGS_KEY, [sampleSong]);
+  return (Array.isArray(songs) ? songs : [])
+    .map(normalizeSong)
+    .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+function saveLocalSong(song) {
+  const nextSong = normalizeSong(song);
+  const songs = getLocalSongs();
+  const nextSongs = songs.some((item) => item.id === nextSong.id)
+    ? songs.map((item) => (item.id === nextSong.id ? { ...item, ...nextSong, createdAt: item.createdAt } : item))
+    : [nextSong, ...songs];
+  write(SONGS_KEY, nextSongs);
+  return nextSong;
+}
+
+function deleteLocalSong(id) {
+  const songs = getLocalSongs();
+  write(SONGS_KEY, songs.filter((song) => song.id !== id));
+}
+
+function getLocalLineups() {
+  const lineups = read(LINEUPS_KEY, []);
+  return (Array.isArray(lineups) ? lineups : [])
+    .map(normalizeLineup)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+function saveLocalLineup(lineup) {
+  const nextLineup = normalizeLineup(lineup);
+  const lineups = getLocalLineups();
+  const nextLineups = lineups.some((item) => item.id === nextLineup.id)
+    ? lineups.map((item) => (item.id === nextLineup.id ? { ...item, ...nextLineup, createdAt: item.createdAt } : item))
+    : [nextLineup, ...lineups];
+  write(LINEUPS_KEY, nextLineups);
+  return nextLineup;
+}
+
+function deleteLocalLineup(id) {
+  const lineups = getLocalLineups();
+  write(LINEUPS_KEY, lineups.filter((lineup) => lineup.id !== id));
 }
 
 function normalizeSong(song) {
@@ -178,34 +253,42 @@ export async function getSongs() {
   // Try Supabase first
   if (isSupabaseConfigured()) {
     try {
-      const { data, error } = await supabase
-        .from('songs')
-        .select('*')
-        .order('title', { ascending: true });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('songs')
+          .select('*')
+          .order('title', { ascending: true }),
+        'Supabase getSongs'
+      );
       
       if (error) {
         console.error('Supabase getSongs error:', error.message);
-      } else if (data) {
-        return data.map(toCamelCaseSong);
+      } else if (Array.isArray(data)) {
+        return data.map(toCamelCaseSong).filter(Boolean);
       }
     } catch (err) {
-      console.error('Supabase getSongs failed:', err.message);
+      console.error('Supabase getSongs failed:', err);
     }
   }
   
   // Fallback to localStorage
-  return read(SONGS_KEY, [sampleSong]).sort((a, b) => a.title.localeCompare(b.title));
+  return getLocalSongs();
 }
 
 export async function getSongById(id) {
+  if (!id) return null;
+
   // Try Supabase first
   if (isSupabaseConfigured()) {
     try {
-      const { data, error } = await supabase
-        .from('songs')
-        .select('*')
-        .eq('id', id)
-        .single();
+      const { data, error } = await withTimeout(
+        supabase
+          .from('songs')
+          .select('*')
+          .eq('id', id)
+          .single(),
+        'Supabase getSongById'
+      );
       
       if (error) {
         console.error('Supabase getSongById error:', error.message);
@@ -213,12 +296,12 @@ export async function getSongById(id) {
         return toCamelCaseSong(data);
       }
     } catch (err) {
-      console.error('Supabase getSongById failed:', err.message);
+      console.error('Supabase getSongById failed:', err);
     }
   }
   
   // Fallback to localStorage
-  return getSongs().find((song) => song.id === id) || null;
+  return getLocalSongs().find((song) => song.id === id) || null;
 }
 
 export async function saveSong(song) {
@@ -230,28 +313,37 @@ export async function saveSong(song) {
       const snakeSong = toSnakeCaseSong(nextSong);
       
       // Check if song exists
-      const { data: existing } = await supabase
-        .from('songs')
-        .select('id')
-        .eq('id', nextSong.id)
-        .single();
+      const { data: existing } = await withTimeout(
+        supabase
+          .from('songs')
+          .select('id')
+          .eq('id', nextSong.id)
+          .single(),
+        'Supabase findSong'
+      );
       
       let result;
       if (existing) {
         // Update existing
-        result = await supabase
-          .from('songs')
-          .update(snakeSong)
-          .eq('id', nextSong.id)
-          .select()
-          .single();
+        result = await withTimeout(
+          supabase
+            .from('songs')
+            .update(snakeSong)
+            .eq('id', nextSong.id)
+            .select()
+            .single(),
+          'Supabase updateSong'
+        );
       } else {
         // Insert new
-        result = await supabase
-          .from('songs')
-          .insert(snakeSong)
-          .select()
-          .single();
+        result = await withTimeout(
+          supabase
+            .from('songs')
+            .insert(snakeSong)
+            .select()
+            .single(),
+          'Supabase insertSong'
+        );
       }
       
       if (result.error) {
@@ -260,39 +352,36 @@ export async function saveSong(song) {
         return toCamelCaseSong(result.data);
       }
     } catch (err) {
-      console.error('Supabase saveSong failed:', err.message);
+      console.error('Supabase saveSong failed:', err);
     }
   }
   
   // Fallback to localStorage
-  const songs = await getSongs();
-  const nextSongs = songs.some((item) => item.id === nextSong.id)
-    ? songs.map((item) => (item.id === nextSong.id ? { ...item, ...nextSong, createdAt: item.createdAt } : item))
-    : [nextSong, ...songs];
-  write(SONGS_KEY, nextSongs);
-  return nextSong;
+  return saveLocalSong(nextSong);
 }
 
 export async function deleteSong(id) {
   // Try Supabase first
   if (isSupabaseConfigured()) {
     try {
-      const { error } = await supabase
-        .from('songs')
-        .delete()
-        .eq('id', id);
+      const { error } = await withTimeout(
+        supabase
+          .from('songs')
+          .delete()
+          .eq('id', id),
+        'Supabase deleteSong'
+      );
       
       if (error) {
         console.error('Supabase deleteSong error:', error.message);
       }
     } catch (err) {
-      console.error('Supabase deleteSong failed:', err.message);
+      console.error('Supabase deleteSong failed:', err);
     }
   }
   
   // Always fallback to localStorage as well
-  const songs = await getSongs();
-  write(SONGS_KEY, songs.filter((song) => song.id !== id));
+  deleteLocalSong(id);
   return true;
 }
 
@@ -304,34 +393,42 @@ export async function getLineups() {
   // Try Supabase first
   if (isSupabaseConfigured()) {
     try {
-      const { data, error } = await supabase
-        .from('lineups')
-        .select('*')
-        .order('date', { ascending: false });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('lineups')
+          .select('*')
+          .order('date', { ascending: false }),
+        'Supabase getLineups'
+      );
       
       if (error) {
         console.error('Supabase getLineups error:', error.message);
-      } else if (data) {
-        return data.map(toCamelCaseLineup);
+      } else if (Array.isArray(data)) {
+        return data.map(toCamelCaseLineup).filter(Boolean);
       }
     } catch (err) {
-      console.error('Supabase getLineups failed:', err.message);
+      console.error('Supabase getLineups failed:', err);
     }
   }
   
   // Fallback to localStorage
-  return read(LINEUPS_KEY, []).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  return getLocalLineups();
 }
 
 export async function getLineupById(id) {
+  if (!id) return null;
+
   // Try Supabase first
   if (isSupabaseConfigured()) {
     try {
-      const { data, error } = await supabase
-        .from('lineups')
-        .select('*')
-        .eq('id', id)
-        .single();
+      const { data, error } = await withTimeout(
+        supabase
+          .from('lineups')
+          .select('*')
+          .eq('id', id)
+          .single(),
+        'Supabase getLineupById'
+      );
       
       if (error) {
         console.error('Supabase getLineupById error:', error.message);
@@ -339,13 +436,12 @@ export async function getLineupById(id) {
         return toCamelCaseLineup(data);
       }
     } catch (err) {
-      console.error('Supabase getLineupById failed:', err.message);
+      console.error('Supabase getLineupById failed:', err);
     }
   }
   
   // Fallback to localStorage
-  const lineups = await getLineups();
-  return lineups.find((lineup) => lineup.id === id) || null;
+  return getLocalLineups().find((lineup) => lineup.id === id) || null;
 }
 
 export async function saveLineup(lineup) {
@@ -357,28 +453,37 @@ export async function saveLineup(lineup) {
       const snakeLineup = toSnakeCaseLineup(nextLineup);
       
       // Check if lineup exists
-      const { data: existing } = await supabase
-        .from('lineups')
-        .select('id')
-        .eq('id', nextLineup.id)
-        .single();
+      const { data: existing } = await withTimeout(
+        supabase
+          .from('lineups')
+          .select('id')
+          .eq('id', nextLineup.id)
+          .single(),
+        'Supabase findLineup'
+      );
       
       let result;
       if (existing) {
         // Update existing
-        result = await supabase
-          .from('lineups')
-          .update(snakeLineup)
-          .eq('id', nextLineup.id)
-          .select()
-          .single();
+        result = await withTimeout(
+          supabase
+            .from('lineups')
+            .update(snakeLineup)
+            .eq('id', nextLineup.id)
+            .select()
+            .single(),
+          'Supabase updateLineup'
+        );
       } else {
         // Insert new
-        result = await supabase
-          .from('lineups')
-          .insert(snakeLineup)
-          .select()
-          .single();
+        result = await withTimeout(
+          supabase
+            .from('lineups')
+            .insert(snakeLineup)
+            .select()
+            .single(),
+          'Supabase insertLineup'
+        );
       }
       
       if (result.error) {
@@ -387,39 +492,36 @@ export async function saveLineup(lineup) {
         return toCamelCaseLineup(result.data);
       }
     } catch (err) {
-      console.error('Supabase saveLineup failed:', err.message);
+      console.error('Supabase saveLineup failed:', err);
     }
   }
   
   // Fallback to localStorage
-  const lineups = await getLineups();
-  const nextLineups = lineups.some((item) => item.id === nextLineup.id)
-    ? lineups.map((item) => (item.id === nextLineup.id ? { ...item, ...nextLineup, createdAt: item.createdAt } : item))
-    : [nextLineup, ...lineups];
-  write(LINEUPS_KEY, nextLineups);
-  return nextLineup;
+  return saveLocalLineup(nextLineup);
 }
 
 export async function deleteLineup(id) {
   // Try Supabase first
   if (isSupabaseConfigured()) {
     try {
-      const { error } = await supabase
-        .from('lineups')
-        .delete()
-        .eq('id', id);
+      const { error } = await withTimeout(
+        supabase
+          .from('lineups')
+          .delete()
+          .eq('id', id),
+        'Supabase deleteLineup'
+      );
       
       if (error) {
         console.error('Supabase deleteLineup error:', error.message);
       }
     } catch (err) {
-      console.error('Supabase deleteLineup failed:', err.message);
+      console.error('Supabase deleteLineup failed:', err);
     }
   }
   
   // Always fallback to localStorage as well
-  const lineups = await getLineups();
-  write(LINEUPS_KEY, lineups.filter((lineup) => lineup.id !== id));
+  deleteLocalLineup(id);
   return true;
 }
 

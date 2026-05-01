@@ -15,16 +15,23 @@ export default function LineupView() {
 
   useEffect(() => {
     async function loadData() {
-      const [lineupData, allSongs] = await Promise.all([
-        getLineupById(id),
-        getSongs()
-      ]);
-      setLineup(lineupData);
-      
-      const map = {};
-      allSongs.forEach(s => map[s.id] = s);
-      setSongsMap(map);
-      setLoading(false);
+      try {
+        const [lineupData, allSongs] = await Promise.all([
+          getLineupById(id),
+          getSongs()
+        ]);
+        setLineup(lineupData);
+        
+        const map = {};
+        (Array.isArray(allSongs) ? allSongs : []).forEach(s => map[s.id] = s);
+        setSongsMap(map);
+      } catch (error) {
+        console.error("Failed to load songs:", error);
+        setLineup(null);
+        setSongsMap({});
+      } finally {
+        setLoading(false);
+      }
     }
     loadData();
   }, [id]);

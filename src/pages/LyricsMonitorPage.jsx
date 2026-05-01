@@ -14,21 +14,29 @@ export default function LyricsMonitorPage() {
 
   useEffect(() => {
     async function loadData() {
-      if (songId) {
-        const songData = await getSongById(songId);
-        setSong(songData);
-      } else if (id) {
-        const lineupData = await getLineupById(id);
-        setLineup(lineupData);
-        // Also load all songs for the lineup
-        if (lineupData?.songs?.length) {
-          const allSongs = await getSongs();
-          const map = {};
-          allSongs.forEach(s => map[s.id] = s);
-          setSongsMap(map);
+      try {
+        if (songId) {
+          const songData = await getSongById(songId);
+          setSong(songData);
+        } else if (id) {
+          const lineupData = await getLineupById(id);
+          setLineup(lineupData);
+          // Also load all songs for the lineup
+          if (lineupData?.songs?.length) {
+            const allSongs = await getSongs();
+            const map = {};
+            (Array.isArray(allSongs) ? allSongs : []).forEach(s => map[s.id] = s);
+            setSongsMap(map);
+          }
         }
+      } catch (error) {
+        console.error("Failed to load songs:", error);
+        setSong(null);
+        setLineup(null);
+        setSongsMap({});
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     loadData();
   }, [id, songId]);

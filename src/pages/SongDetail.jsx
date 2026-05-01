@@ -15,9 +15,15 @@ export default function SongDetail() {
 
   useEffect(() => {
     async function loadSong() {
-      const data = await getSongById(id);
-      setSong(data);
-      setLoading(false);
+      try {
+        const data = await getSongById(id);
+        setSong(data);
+      } catch (error) {
+        console.error("Failed to load songs:", error);
+        setSong(null);
+      } finally {
+        setLoading(false);
+      }
     }
     loadSong();
   }, [id]);

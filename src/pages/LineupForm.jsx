@@ -32,13 +32,20 @@ export default function LineupForm() {
 
   useEffect(() => {
     async function loadData() {
-      const [songsData, lineupData] = await Promise.all([
-        getSongs(),
-        id ? getLineupById(id) : null
-      ]);
-      setSongs(songsData);
-      setLineup(lineupData || blankLineup);
-      setLoading(false);
+      try {
+        const [songsData, lineupData] = await Promise.all([
+          getSongs(),
+          id ? getLineupById(id) : null
+        ]);
+        setSongs(Array.isArray(songsData) ? songsData : []);
+        setLineup(lineupData || blankLineup);
+      } catch (error) {
+        console.error("Failed to load songs:", error);
+        setSongs([]);
+        setLineup(blankLineup);
+      } finally {
+        setLoading(false);
+      }
     }
     loadData();
   }, [id]);

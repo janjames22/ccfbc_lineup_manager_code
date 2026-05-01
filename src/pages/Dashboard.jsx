@@ -12,13 +12,20 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function loadData() {
-      const [songsData, upcomingData] = await Promise.all([
-        getSongs(),
-        getUpcomingLineup()
-      ]);
-      setSongs(songsData);
-      setUpcoming(upcomingData);
-      setLoading(false);
+      try {
+        const [songsData, upcomingData] = await Promise.all([
+          getSongs(),
+          getUpcomingLineup()
+        ]);
+        setSongs(Array.isArray(songsData) ? songsData : []);
+        setUpcoming(upcomingData);
+      } catch (error) {
+        console.error("Failed to load songs:", error);
+        setSongs([]);
+        setUpcoming(null);
+      } finally {
+        setLoading(false);
+      }
     }
     loadData();
   }, []);

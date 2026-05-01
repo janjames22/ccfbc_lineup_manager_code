@@ -17,9 +17,15 @@ export default function SongLibrary() {
 
   useEffect(() => {
     async function loadSongs() {
-      const data = await getSongs();
-      setSongs(data);
-      setLoading(false);
+      try {
+        const data = await getSongs();
+        setSongs(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error("Failed to load songs:", error);
+        setSongs([]);
+      } finally {
+        setLoading(false);
+      }
     }
     loadSongs();
   }, []);
