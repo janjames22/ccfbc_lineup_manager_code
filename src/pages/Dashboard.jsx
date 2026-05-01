@@ -64,7 +64,7 @@ export default function Dashboard() {
               </div>
               <ol className="space-y-3">
                 {upcoming.songs.map((song, index) => (
-                  <li key={`${song.songId}-${index}`} className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+                  <li key={`${song.id || song.songId}-${index}`} className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
                     <span className="font-medium">{index + 1}. {song.title}</span>
                     <span className="rounded-md bg-amber-100 px-2 py-1 text-sm font-semibold text-amber-900">{song.selectedKey}</span>
                   </li>

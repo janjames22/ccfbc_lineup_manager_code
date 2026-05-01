@@ -68,17 +68,22 @@ function toSnakeCaseSong(song) {
 }
 
 function toSnakeCaseLineup(lineup) {
-  return {
-    id: lineup.id,
+  const payload = {
     date: lineup.date || '',
     service_time: lineup.serviceTime || '9:00 AM',
     worship_leader: lineup.worshipLeader || '',
-    songs: JSON.stringify(lineup.songs || []),
-    musicians: JSON.stringify({ ...emptyMusicians(), ...(lineup.musicians || {}) }),
+    songs: normalizeLineupSongs(lineup.songs || []),
+    musicians: { ...emptyMusicians(), ...(lineup.musicians || {}) },
     general_notes: lineup.generalNotes || '',
     created_at: lineup.createdAt || new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
+
+  if (isValidUUID(lineup.id)) {
+    payload.id = lineup.id;
+  }
+
+  return payload;
 }
 
 // Convert snake_case Supabase columns to camelCase app fields
@@ -119,8 +124,8 @@ function toCamelCaseLineup(dbLineup) {
     date: dbLineup.date || '',
     serviceTime: dbLineup.service_time || '9:00 AM',
     worshipLeader: dbLineup.worship_leader || '',
-    songs: Array.isArray(songs) ? songs : [],
-    musicians,
+    songs: normalizeLineupSongs(songs),
+    musicians: musicians && typeof musicians === 'object' && !Array.isArray(musicians) ? musicians : {},
     generalNotes: dbLineup.general_notes || '',
     createdAt: dbLineup.created_at,
     updatedAt: dbLineup.updated_at,
@@ -223,6 +228,30 @@ function deleteLocalLineup(id) {
   write(LINEUPS_KEY, lineups.filter((lineup) => lineup.id !== id));
 }
 
+function getLineupSongId(song) {
+  return song?.id || song?.songId || '';
+}
+
+function normalizeLineupSongs(songs) {
+  if (!Array.isArray(songs)) return [];
+
+  return songs.map((song, index) => {
+    const id = getLineupSongId(song);
+    return {
+      ...song,
+      id,
+      songId: id,
+      title: song.title || 'Untitled Song',
+      artist: song.artist || '',
+      originalKey: song.originalKey || song.selectedKey || 'C',
+      selectedKey: song.selectedKey || song.originalKey || 'C',
+      order: Number.isFinite(Number(song.order)) ? Number(song.order) : index + 1,
+      orderIndex: Number.isFinite(Number(song.orderIndex)) ? Number(song.orderIndex) : index,
+      notes: song.notes || '',
+    };
+  });
+}
+
 function normalizeSong(song) {
   return {
     id: song.id || uid('song'),
@@ -247,7 +276,7 @@ function normalizeLineup(lineup) {
     date: lineup.date || '',
     serviceTime: lineup.serviceTime || '9:00 AM',
     worshipLeader: lineup.worshipLeader || '',
-    songs: Array.isArray(lineup.songs) ? lineup.songs : [],
+    songs: normalizeLineupSongs(lineup.songs),
     musicians: { ...emptyMusicians(), ...(lineup.musicians || {}) },
     generalNotes: lineup.generalNotes || '',
     createdAt: lineup.createdAt || new Date().toISOString(),
@@ -433,6 +462,7 @@ export async function getLineups() {
       if (error) {
         console.error('Supabase getLineups error:', error.message);
       } else if (Array.isArray(data)) {
+        console.log("Loaded lineups:", data);
         return data.map(toCamelCaseLineup).filter(Boolean);
       }
     } catch (err) {
@@ -441,14 +471,16 @@ export async function getLineups() {
   }
   
   // Fallback to localStorage
-  return getLocalLineups();
+  const localLineups = getLocalLineups();
+  console.log("Loaded lineups:", localLineups);
+  return localLineups;
 }
 
 export async function getLineupById(id) {
   if (!id) return null;
 
   // Try Supabase first
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isValidUUID(id)) {
     try {
       const { data, error } = await withTimeout(
         supabase
@@ -479,25 +511,29 @@ export async function saveLineup(lineup) {
   // Try Supabase first
   if (isSupabaseConfigured()) {
     try {
-      const snakeLineup = toSnakeCaseLineup(nextLineup);
+      const payload = toSnakeCaseLineup(nextLineup);
+      console.log("Saving lineup payload:", payload);
+      const hasSupabaseId = isValidUUID(nextLineup.id);
       
-      // Check if lineup exists
-      const { data: existing } = await withTimeout(
-        supabase
-          .from('lineups')
-          .select('id')
-          .eq('id', nextLineup.id)
-          .single(),
-        'Supabase findLineup'
-      );
+      // Check if lineup exists only when the app id is already a Supabase UUID.
+      const { data: existing } = hasSupabaseId
+        ? await withTimeout(
+            supabase
+              .from('lineups')
+              .select('id')
+              .eq('id', nextLineup.id)
+              .single(),
+            'Supabase findLineup'
+          )
+        : { data: null };
       
       let result;
-      if (existing) {
+      if (existing && hasSupabaseId) {
         // Update existing
         result = await withTimeout(
           supabase
             .from('lineups')
-            .update(snakeLineup)
+            .update(payload)
             .eq('id', nextLineup.id)
             .select()
             .single(),
@@ -505,10 +541,13 @@ export async function saveLineup(lineup) {
         );
       } else {
         // Insert new
+        const insertPayload = { ...payload };
+        delete insertPayload.id;
+
         result = await withTimeout(
           supabase
             .from('lineups')
-            .insert(snakeLineup)
+            .insert(insertPayload)
             .select()
             .single(),
           'Supabase insertLineup'
@@ -516,12 +555,15 @@ export async function saveLineup(lineup) {
       }
       
       if (result.error) {
-        console.error('Supabase saveLineup error:', result.error.message);
+        console.error("Save lineup error:", result.error);
+        throw new Error(result.error.message);
       } else if (result.data) {
+        console.log("Saved lineup result:", result.data);
         return toCamelCaseLineup(result.data);
       }
     } catch (err) {
-      console.error('Supabase saveLineup failed:', err);
+      console.error("Save lineup error:", err);
+      throw err;
     }
   }
   
@@ -531,7 +573,7 @@ export async function saveLineup(lineup) {
 
 export async function deleteLineup(id) {
   // Try Supabase first
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isValidUUID(id)) {
     try {
       const { error } = await withTimeout(
         supabase

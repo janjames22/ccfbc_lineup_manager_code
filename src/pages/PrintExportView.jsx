@@ -10,11 +10,13 @@ export default function PrintExportView() {
   const [lineup, setLineup] = useState(null);
   const [songsMap, setSongsMap] = useState({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     async function loadData() {
       try {
         const lineupData = await getLineupById(id);
+        if (!lineupData) throw new Error('Lineup not found.');
         setLineup(lineupData);
         
         if (lineupData?.songs?.length) {
@@ -24,7 +26,8 @@ export default function PrintExportView() {
           setSongsMap(map);
         }
       } catch (error) {
-        console.error("Failed to load songs:", error);
+        console.error('Failed to load lineup:', error);
+        setError('Unable to load this lineup. Please try again.');
         setLineup(null);
         setSongsMap({});
       } finally {
@@ -46,6 +49,7 @@ export default function PrintExportView() {
     return (
       <main className="page-shell">
         <p className="text-slate-600">Lineup not found.</p>
+        {error && <p className="mt-2 text-sm font-semibold text-red-700">{error}</p>}
         <Link className="btn-primary mt-4" to="/lineups">Back to Lineups</Link>
       </main>
     );
@@ -68,10 +72,10 @@ export default function PrintExportView() {
         <h2 className="section-title">Song Lineup</h2>
         <div className="mt-4 space-y-6">
           {lineup.songs.map((lineupSong, index) => {
-            const song = songsMap[lineupSong.songId];
+            const song = songsMap[lineupSong.id || lineupSong.songId];
             const delta = song ? getSemitoneDelta(song.originalKey, lineupSong.selectedKey) : 0;
             return (
-              <article key={`${lineupSong.songId}-${index}`} className="break-inside-avoid border-b border-slate-200 pb-6">
+              <article key={`${lineupSong.id || lineupSong.songId}-${index}`} className="break-inside-avoid border-b border-slate-200 pb-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h3 className="text-xl font-bold text-slate-950">{index + 1}. {lineupSong.title}</h3>

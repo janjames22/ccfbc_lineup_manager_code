@@ -12,6 +12,7 @@ export default function LineupView() {
   const [lineup, setLineup] = useState(null);
   const [songsMap, setSongsMap] = useState({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     async function loadData() {
@@ -20,13 +21,15 @@ export default function LineupView() {
           getLineupById(id),
           getSongs()
         ]);
+        if (!lineupData) throw new Error('Lineup not found.');
         setLineup(lineupData);
         
         const map = {};
         (Array.isArray(allSongs) ? allSongs : []).forEach(s => map[s.id] = s);
         setSongsMap(map);
       } catch (error) {
-        console.error("Failed to load songs:", error);
+        console.error('Failed to load lineup:', error);
+        setError('Unable to load this lineup. Please try again.');
         setLineup(null);
         setSongsMap({});
       } finally {
@@ -48,6 +51,7 @@ export default function LineupView() {
     return (
       <main className="page-shell">
         <p className="text-slate-600">Lineup not found.</p>
+        {error && <p className="mt-2 text-sm font-semibold text-red-700">{error}</p>}
         <Link className="btn-primary mt-4" to="/lineups"><ArrowLeft size={18} aria-hidden="true" /> Back to Lineups</Link>
       </main>
     );
@@ -80,10 +84,10 @@ export default function LineupView() {
       <section className="grid gap-6 lg:grid-cols-[1fr_0.75fr]">
         <div className="space-y-4">
           {lineup.songs.map((lineupSong, index) => {
-            const song = songsMap[lineupSong.songId];
+            const song = songsMap[lineupSong.id || lineupSong.songId];
             const delta = song ? getSemitoneDelta(song.originalKey, lineupSong.selectedKey) : 0;
             return (
-              <article key={`${lineupSong.songId}-${index}`} className="panel">
+              <article key={`${lineupSong.id || lineupSong.songId}-${index}`} className="panel">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-blue-700">Song {index + 1}</p>

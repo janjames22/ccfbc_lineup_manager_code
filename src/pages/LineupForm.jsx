@@ -29,18 +29,25 @@ export default function LineupForm() {
   const [lineup, setLineup] = useState(blankLineup);
   const [selectedSongId, setSelectedSongId] = useState('');
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     async function loadData() {
       try {
+        setError('');
         const [songsData, lineupData] = await Promise.all([
           getSongs(),
           id ? getLineupById(id) : null
         ]);
         setSongs(Array.isArray(songsData) ? songsData : []);
+        if (id && !lineupData) {
+          throw new Error('Lineup not found.');
+        }
         setLineup(lineupData || blankLineup);
       } catch (error) {
-        console.error("Failed to load songs:", error);
+        console.error('Failed to load lineup:', error);
+        setError('Unable to load this lineup. Please try again.');
         setSongs([]);
         setLineup(blankLineup);
       } finally {
@@ -55,22 +62,33 @@ export default function LineupForm() {
 
   const addSong = () => {
     const song = songs.find((item) => item.id === selectedSongId);
-    if (!song || lineup.songs.some((item) => item.songId === song.id)) return;
-    update('songs', [
+    if (!song || lineup.songs.some((item) => (item.id || item.songId) === song.id)) return;
+
+    const selectedSongs = [
       ...lineup.songs,
       {
+        id: song.id,
         songId: song.id,
         title: song.title,
+        artist: song.artist || '',
+        originalKey: song.originalKey || 'C',
         selectedKey: song.selectedKey || song.originalKey,
         order: lineup.songs.length + 1,
+        orderIndex: lineup.songs.length,
         notes: '',
       },
-    ]);
+    ];
+    console.log("Selected lineup songs:", selectedSongs);
+    update('songs', selectedSongs);
     setSelectedSongId('');
   };
 
   const removeSong = (index) => {
-    update('songs', lineup.songs.filter((_, itemIndex) => itemIndex !== index).map((song, itemIndex) => ({ ...song, order: itemIndex + 1 })));
+    const selectedSongs = lineup.songs
+      .filter((_, itemIndex) => itemIndex !== index)
+      .map((song, itemIndex) => ({ ...song, order: itemIndex + 1, orderIndex: itemIndex }));
+    console.log("Selected lineup songs:", selectedSongs);
+    update('songs', selectedSongs);
   };
 
   const moveSong = (index, delta) => {
@@ -78,16 +96,31 @@ export default function LineupForm() {
     const nextIndex = index + delta;
     if (nextIndex < 0 || nextIndex >= nextSongs.length) return;
     [nextSongs[index], nextSongs[nextIndex]] = [nextSongs[nextIndex], nextSongs[index]];
-    update('songs', nextSongs.map((song, itemIndex) => ({ ...song, order: itemIndex + 1 })));
+    const selectedSongs = nextSongs.map((song, itemIndex) => ({ ...song, order: itemIndex + 1, orderIndex: itemIndex }));
+    console.log("Selected lineup songs:", selectedSongs);
+    update('songs', selectedSongs);
   };
 
   const save = async (event) => {
     event.preventDefault();
-    const saved = await saveLineup(lineup);
-    navigate(`/lineups/${saved.id}`);
+    setSaving(true);
+    setError('');
+
+    try {
+      const selectedSongs = lineup.songs;
+      console.log("Selected lineup songs:", selectedSongs);
+      const saved = await saveLineup(lineup);
+      if (!saved?.id) throw new Error('Lineup was not saved.');
+      navigate(`/lineups/${saved.id}`);
+    } catch (error) {
+      console.error("Save lineup error:", error);
+      setError(error.message || 'Unable to save this lineup. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const availableSongs = songs.filter((song) => !lineup.songs.some((item) => item.songId === song.id));
+  const availableSongs = songs.filter((song) => !lineup.songs.some((item) => (item.id || item.songId) === song.id));
 
   if (loading) {
     return (
@@ -101,6 +134,7 @@ export default function LineupForm() {
     <main className="page-shell">
       <PageHeader eyebrow={id ? 'Edit Lineup' : 'Create Lineup'} title={id ? 'Update Sunday Lineup' : 'Create Sunday Lineup'} />
       <form className="space-y-6" onSubmit={save}>
+        {error && <p className="text-sm font-semibold text-red-700">{error}</p>}
         <section className="panel">
           <h2 className="section-title">Service Details</h2>
           <div className="mt-4 grid gap-4 md:grid-cols-3">
@@ -122,7 +156,7 @@ export default function LineupForm() {
 
           <div className="mt-5 space-y-3">
             {lineup.songs.map((song, index) => (
-              <div key={`${song.songId}-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div key={`${song.id || song.songId}-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <h3 className="font-bold text-slate-950">{index + 1}. {song.title}</h3>
                   <div className="flex flex-wrap gap-2">
@@ -153,7 +187,7 @@ export default function LineupForm() {
           <label><span className="label">General Reminders</span><textarea className="textarea" value={lineup.generalNotes} onChange={(event) => update('generalNotes', event.target.value)} /></label>
         </section>
 
-        <button className="btn-primary" type="submit">{id ? 'Update Lineup' : 'Save Lineup'}</button>
+        <button className="btn-primary" type="submit" disabled={saving}>{saving ? 'Saving...' : id ? 'Update Lineup' : 'Save Lineup'}</button>
       </form>
     </main>
   );

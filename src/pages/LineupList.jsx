@@ -8,6 +8,7 @@ import { getLineups } from '../utils/storage';
 export default function LineupList() {
   const [lineups, setLineups] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     async function loadLineups() {
@@ -16,6 +17,7 @@ export default function LineupList() {
         setLineups(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Failed to load lineups:', error);
+        setError('Unable to load lineups. Please try again.');
         setLineups([]);
       } finally {
         setLoading(false);
@@ -32,6 +34,8 @@ export default function LineupList() {
         description="Create, review, monitor, and print weekly worship lineups."
         actions={<Link className="btn-primary" to="/lineups/new"><CalendarPlus size={18} aria-hidden="true" /> Create Lineup</Link>}
       />
+
+      {error && <p className="mb-4 text-sm font-semibold text-red-700">{error}</p>}
 
       {lineups.length ? (
         <div className="grid gap-4">

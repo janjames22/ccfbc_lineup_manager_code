@@ -54,7 +54,7 @@ export default function LyricsMonitorPage() {
     }
 
     const sections = lineup?.songs.flatMap((lineupSong) => {
-      const linkedSong = songsMap[lineupSong.songId];
+      const linkedSong = songsMap[lineupSong.id || lineupSong.songId];
       const cues = linkedSong?.lyricsMonitor?.length ? linkedSong.lyricsMonitor : [{ section: 'Song Cue', text: lineupSong.notes || 'No cue text added.', vocalNotes: '', repeatCount: '' }];
       return cues.map((cue) => ({
         ...cue,
