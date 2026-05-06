@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { emptyMusicians } from './constants';
+import { getOfflineSongs, saveSongsOffline, getOfflineLineups, saveLineupsOffline } from './offlineSync';
 
 const SONGS_KEY = 'worshipSongs';
 const LINEUPS_KEY = 'worshipLineups';
@@ -292,6 +293,13 @@ function normalizeLineup(lineup) {
 // ============================================
 
 export async function getSongs() {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    console.log('App is offline, loading songs from offline cache');
+    const offlineSongs = await getOfflineSongs();
+    if (offlineSongs && offlineSongs.length > 0) return offlineSongs;
+    return getLocalSongs();
+  }
+
   // Try Supabase first
   if (isSupabaseConfigured()) {
     console.log('Loading songs from Supabase...');
@@ -308,7 +316,9 @@ export async function getSongs() {
         console.error('Supabase getSongs error:', error.message);
       } else if (Array.isArray(data)) {
         console.log('Songs loaded from Supabase:', data.length);
-        return data.map(toCamelCaseSong).filter(Boolean);
+        const camelSongs = data.map(toCamelCaseSong).filter(Boolean);
+        saveSongsOffline(camelSongs).catch(console.error);
+        return camelSongs;
       }
     } catch (err) {
       console.error('Supabase getSongs failed:', err);
@@ -323,6 +333,11 @@ export async function getSongs() {
 
 export async function getSongById(id) {
   if (!id) return null;
+
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    const offlineSongs = await getOfflineSongs();
+    return offlineSongs?.find((song) => song.id === id) || getLocalSongs().find((song) => song.id === id) || null;
+  }
 
   // Try Supabase first
   if (isSupabaseConfigured() && isValidUUID(id)) {
@@ -451,6 +466,13 @@ export async function deleteSong(id) {
 // ============================================
 
 export async function getLineups() {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    console.log('App is offline, loading lineups from offline cache');
+    const offlineLineups = await getOfflineLineups();
+    if (offlineLineups && offlineLineups.length > 0) return offlineLineups;
+    return getLocalLineups();
+  }
+
   // Try Supabase first
   if (isSupabaseConfigured()) {
     try {
@@ -466,7 +488,9 @@ export async function getLineups() {
         console.error('Supabase getLineups error:', error.message);
       } else if (Array.isArray(data)) {
         console.log("Loaded lineups:", data);
-        return data.map(toCamelCaseLineup).filter(Boolean);
+        const camelLineups = data.map(toCamelCaseLineup).filter(Boolean);
+        saveLineupsOffline(camelLineups).catch(console.error);
+        return camelLineups;
       }
     } catch (err) {
       console.error('Supabase getLineups failed:', err);
@@ -481,6 +505,11 @@ export async function getLineups() {
 
 export async function getLineupById(id) {
   if (!id) return null;
+
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    const offlineLineups = await getOfflineLineups();
+    return offlineLineups?.find((lineup) => lineup.id === id) || getLocalLineups().find((lineup) => lineup.id === id) || null;
+  }
 
   // Try Supabase first
   if (isSupabaseConfigured() && isValidUUID(id)) {

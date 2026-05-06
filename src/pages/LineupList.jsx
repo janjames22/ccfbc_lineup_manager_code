@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
 import PageHeader from '../components/PageHeader';
+import DownloadOfflineButton from '../components/DownloadOfflineButton';
 import { getLineups } from '../utils/storage';
 
 export default function LineupList() {
@@ -32,7 +33,12 @@ export default function LineupList() {
         eyebrow="Sunday Lineups"
         title="Service Plans"
         description="Create, review, monitor, and print weekly worship lineups."
-        actions={<Link className="btn-primary" to="/lineups/new"><CalendarPlus size={18} aria-hidden="true" /> Create Lineup</Link>}
+        actions={
+          <div className="flex items-center gap-2">
+            <DownloadOfflineButton onDownload={async () => { await getLineups(); }} label="Sync Lineups" />
+            <Link className="btn-primary" to="/lineups/new"><CalendarPlus size={18} aria-hidden="true" /> Create Lineup</Link>
+          </div>
+        }
       />
 
       {error && <p className="mb-4 text-sm font-semibold text-red-700">{error}</p>}

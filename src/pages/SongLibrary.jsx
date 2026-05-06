@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
 import PageHeader from '../components/PageHeader';
 import SongCard from '../components/SongCard';
+import DownloadOfflineButton from '../components/DownloadOfflineButton';
 import { KEYS } from '../utils/constants';
 import { getSongs } from '../utils/storage';
 
@@ -51,7 +52,12 @@ export default function SongLibrary() {
         eyebrow="Song Library"
         title="Chord Charts"
         description="Search by title, key, category, or language."
-        actions={<Link className="btn-primary" to="/songs/new"><Plus size={18} aria-hidden="true" /> Add Song</Link>}
+        actions={
+          <div className="flex items-center gap-2">
+            <DownloadOfflineButton onDownload={async () => { await getSongs(); }} label="Sync Songs" />
+            <Link className="btn-primary" to="/songs/new"><Plus size={18} aria-hidden="true" /> Add Song</Link>
+          </div>
+        }
       />
 
       <section className="panel mb-6">

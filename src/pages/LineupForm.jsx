@@ -5,6 +5,7 @@ import PageHeader from '../components/PageHeader';
 import TeamAssignments from '../components/TeamAssignments';
 import { KEYS, emptyMusicians } from '../utils/constants';
 import { getLineupById, getSongs, saveLineup } from '../utils/storage';
+import { useOffline } from '../hooks/useOffline';
 
 function nextSunday() {
   const date = new Date();
@@ -31,6 +32,7 @@ export default function LineupForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const isOffline = useOffline();
 
   useEffect(() => {
     async function loadData() {
@@ -187,7 +189,9 @@ export default function LineupForm() {
           <label><span className="label">General Reminders</span><textarea className="textarea" value={lineup.generalNotes} onChange={(event) => update('generalNotes', event.target.value)} /></label>
         </section>
 
-        <button className="btn-primary" type="submit" disabled={saving}>{saving ? 'Saving...' : id ? 'Update Lineup' : 'Save Lineup'}</button>
+        <button className="btn-primary" type="submit" disabled={saving || isOffline}>
+          {isOffline ? 'Editing requires internet connection' : saving ? 'Saving...' : id ? 'Update Lineup' : 'Save Lineup'}
+        </button>
       </form>
     </main>
   );

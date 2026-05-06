@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import { KEYS, SECTION_TYPES } from '../utils/constants';
 import { getSongById, saveSong } from '../utils/storage';
+import { useOffline } from '../hooks/useOffline';
 
 const blankSong = {
   title: '',
@@ -26,6 +27,7 @@ export default function SongForm() {
   const [loading, setLoading] = useState(!!id);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const isOffline = useOffline();
 
   useEffect(() => {
     async function loadSong() {
@@ -185,7 +187,9 @@ export default function SongForm() {
             ))}
           </div>
 
-          <button className="btn-primary w-full justify-center" type="submit" disabled={saving}>{saving ? 'Saving...' : id ? 'Update Song' : 'Save Song'}</button>
+          <button className="btn-primary w-full justify-center" type="submit" disabled={saving || isOffline}>
+            {isOffline ? 'Editing requires internet connection' : saving ? 'Saving...' : id ? 'Update Song' : 'Save Song'}
+          </button>
         </aside>
       </form>
     </main>
