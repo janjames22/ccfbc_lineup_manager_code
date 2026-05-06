@@ -118,7 +118,7 @@ export default function LineupView() {
                     {lineupSong.notes && <p className="mt-2 ml-10 text-sm text-slate-600 bg-slate-50 p-2 rounded-md border border-slate-100">{lineupSong.notes}</p>}
                   </div>
                   
-                  <div className="flex flex-col items-end gap-3 sm:ml-4">
+                  <div className="flex flex-wrap items-center sm:flex-col sm:items-end gap-3 sm:ml-4 mt-2 sm:mt-0">
                     <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 shadow-inner">
                       <button className="grid size-8 place-items-center rounded-md text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-sm transition" onClick={() => updateSongKey(index, -1)} title="Transpose Down">
                         <ChevronDown size={18} />

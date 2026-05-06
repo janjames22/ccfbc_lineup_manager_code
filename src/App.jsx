@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import Navbar from './components/Navbar';
+import InstallBanner from './components/InstallBanner';
 import Dashboard from './pages/Dashboard';
 import SongLibrary from './pages/SongLibrary';
 import SongForm from './pages/SongForm';
@@ -14,6 +15,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-stone-50 text-slate-900">
       <Navbar />
+      <InstallBanner />
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/songs" element={<SongLibrary />} />

@@ -52,50 +52,62 @@ export default function Dashboard() {
 
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="panel">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-6 flex items-center justify-between">
             <h2 className="section-title">Upcoming Sunday Lineup</h2>
-            <Link to="/lineups" className="text-sm font-semibold text-blue-700 hover:text-blue-900">View all</Link>
+            <Link to="/lineups" className="text-sm font-bold text-blue-600 hover:text-blue-800 transition-colors">View all</Link>
           </div>
           {upcoming ? (
-            <div className="space-y-4">
-              <div className="rounded-lg bg-blue-50 p-4">
-                <p className="text-sm font-semibold uppercase text-blue-700">{upcoming.date} • {upcoming.serviceTime}</p>
-                <h3 className="mt-1 text-xl font-bold text-slate-950">{upcoming.worshipLeader || 'Worship Leader TBD'}</h3>
+            <div className="space-y-5">
+              <div className="rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50/50 p-5 border border-blue-100/50">
+                <p className="text-xs font-bold uppercase tracking-wider text-blue-700">{upcoming.date} • {upcoming.serviceTime}</p>
+                <h3 className="mt-1.5 text-2xl font-extrabold text-slate-900">{upcoming.worshipLeader || 'Worship Leader TBD'}</h3>
               </div>
               <ol className="space-y-3">
                 {upcoming.songs.map((song, index) => (
-                  <li key={`${song.id || song.songId}-${index}`} className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
-                    <span className="font-medium">{index + 1}. {song.title}</span>
-                    <span className="rounded-md bg-amber-100 px-2 py-1 text-sm font-semibold text-amber-900">{song.selectedKey}</span>
+                  <li key={`${song.id || song.songId}-${index}`} className="flex items-center justify-between rounded-xl border border-slate-200/60 bg-slate-50/50 p-3.5 transition hover:bg-slate-50 hover:border-slate-300">
+                    <span className="font-semibold text-slate-800">{index + 1}. {song.title}</span>
+                    <span className="rounded-lg bg-amber-100/80 px-2.5 py-1 text-xs font-bold text-amber-900 shadow-sm border border-amber-200/50">{song.selectedKey}</span>
                   </li>
                 ))}
               </ol>
-              <div className="flex flex-wrap gap-2">
-                <Link className="btn-primary" to={`/lineups/${upcoming.id}`}>Open Lineup</Link>
-                <Link className="btn-secondary" to={`/lineups/${upcoming.id}/monitor`}>
+              <div className="mt-2 flex flex-wrap gap-3">
+                <Link className="btn-primary flex-1 sm:flex-none" to={`/lineups/${upcoming.id}`}>Open Lineup</Link>
+                <Link className="btn-secondary flex-1 sm:flex-none" to={`/lineups/${upcoming.id}/monitor`}>
                   <Monitor size={18} aria-hidden="true" /> Monitor
                 </Link>
               </div>
             </div>
           ) : (
-            <div className="rounded-lg border border-dashed border-slate-300 p-6">
-              <p className="text-slate-600">No upcoming lineup yet.</p>
-              <Link className="btn-primary mt-4" to="/lineups/new">Create Sunday Lineup</Link>
+            <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 p-8 text-center transition hover:border-slate-300">
+              <p className="text-slate-500 font-medium">No upcoming lineup yet.</p>
+              <Link className="btn-primary mt-5 mx-auto" to="/lineups/new">Create Sunday Lineup</Link>
             </div>
           )}
         </div>
 
-        <div className="panel">
-          <h2 className="section-title">Quick Actions</h2>
-          <div className="mt-4 grid gap-3">
+        <div className="panel h-fit">
+          <h2 className="section-title mb-6">Quick Actions</h2>
+          <div className="grid gap-3">
             <Link className="quick-action" to="/songs">
-              <Library size={20} aria-hidden="true" /> View Song Library
+              <span className="grid size-10 place-items-center rounded-lg bg-blue-100 text-blue-700 shadow-sm"><Library size={20} aria-hidden="true" /></span>
+              <span className="flex flex-col">
+                <span className="font-bold text-slate-900">View Song Library</span>
+                <span className="text-xs font-medium text-slate-500">Browse and search chords</span>
+              </span>
             </Link>
             <Link className="quick-action" to="/songs/new">
-              <Music2 size={20} aria-hidden="true" /> Add Chord Chart
+              <span className="grid size-10 place-items-center rounded-lg bg-amber-100 text-amber-700 shadow-sm"><Music2 size={20} aria-hidden="true" /></span>
+              <span className="flex flex-col">
+                <span className="font-bold text-slate-900">Add Chord Chart</span>
+                <span className="text-xs font-medium text-slate-500">Add a new song to your library</span>
+              </span>
             </Link>
             <Link className="quick-action" to="/lineups/new">
-              <CalendarPlus size={20} aria-hidden="true" /> Build Sunday Lineup
+              <span className="grid size-10 place-items-center rounded-lg bg-emerald-100 text-emerald-700 shadow-sm"><CalendarPlus size={20} aria-hidden="true" /></span>
+              <span className="flex flex-col">
+                <span className="font-bold text-slate-900">Build Sunday Lineup</span>
+                <span className="text-xs font-medium text-slate-500">Plan a new service</span>
+              </span>
             </Link>
           </div>
         </div>
