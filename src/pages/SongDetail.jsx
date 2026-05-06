@@ -1,4 +1,4 @@
-import { ArrowLeft, Monitor, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, Monitor, Pencil, Trash2, Youtube } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
@@ -64,6 +64,11 @@ export default function SongDetail() {
         actions={
           <>
             <Link className="btn-secondary" to="/songs"><ArrowLeft size={18} aria-hidden="true" /> Songs</Link>
+            {song.youtubeLink && (
+              <a className="btn-secondary text-red-600 hover:border-red-200 hover:bg-red-50" href={song.youtubeLink} target="_blank" rel="noopener noreferrer">
+                <Youtube size={18} aria-hidden="true" /> YouTube
+              </a>
+            )}
             <Link className="btn-secondary" to={`/lyrics-monitor/${song.id}`}><Monitor size={18} aria-hidden="true" /> Monitor</Link>
             <Link className="btn-secondary" to={`/songs/${song.id}/edit`}><Pencil size={18} aria-hidden="true" /> Edit</Link>
             <button className="btn-danger" type="button" onClick={remove}><Trash2 size={18} aria-hidden="true" /> Delete</button>

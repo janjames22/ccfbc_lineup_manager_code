@@ -1,10 +1,10 @@
-import { ArrowLeft, Monitor, Pencil, Printer, Trash2 } from 'lucide-react';
+import { ArrowLeft, Monitor, Pencil, Printer, Trash2, Youtube, BookOpen, ChevronUp, ChevronDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import TeamAssignments from '../components/TeamAssignments';
-import { deleteLineup, getLineupById, getSongs } from '../utils/storage';
-import { getSemitoneDelta, transposeChords } from '../utils/transposeChords';
+import { deleteLineup, getLineupById, getSongs, saveLineup } from '../utils/storage';
+import { getSemitoneDelta, transposeChords, getTransposedKey } from '../utils/transposeChords';
 
 export default function LineupView() {
   const { id } = useParams();
@@ -64,6 +64,26 @@ export default function LineupView() {
     }
   };
 
+  const updateSongKey = async (index, delta) => {
+    const currentLineupSong = lineup.songs[index];
+    const newKey = getTransposedKey(currentLineupSong.selectedKey, delta);
+    if (newKey === currentLineupSong.selectedKey) return;
+    
+    const newSongs = [...lineup.songs];
+    newSongs[index] = { ...currentLineupSong, selectedKey: newKey };
+    
+    const updatedLineup = { ...lineup, songs: newSongs };
+    setLineup(updatedLineup);
+    
+    try {
+      await saveLineup(updatedLineup);
+    } catch (err) {
+      console.error('Failed to save transposed key', err);
+      // Revert on error
+      setLineup(lineup);
+    }
+  };
+
   return (
     <main className="page-shell">
       <PageHeader
@@ -87,16 +107,49 @@ export default function LineupView() {
             const song = songsMap[lineupSong.id || lineupSong.songId];
             const delta = song ? getSemitoneDelta(song.originalKey, lineupSong.selectedKey) : 0;
             return (
-              <article key={`${lineupSong.id || lineupSong.songId}-${index}`} className="panel">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-blue-700">Song {index + 1}</p>
-                    <h2 className="text-2xl font-bold text-slate-950">{lineupSong.title}</h2>
-                    {lineupSong.notes && <p className="mt-1 text-sm text-slate-600">{lineupSong.notes}</p>}
+              <article key={`${lineupSong.id || lineupSong.songId}-${index}`} className="panel flex flex-col gap-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-1">
+                      <span className="flex size-7 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">{index + 1}</span>
+                      <h2 className="text-2xl font-bold text-slate-900">{lineupSong.title}</h2>
+                    </div>
+                    {song?.artist && <p className="text-slate-500 font-medium ml-10">{song.artist}</p>}
+                    {lineupSong.notes && <p className="mt-2 ml-10 text-sm text-slate-600 bg-slate-50 p-2 rounded-md border border-slate-100">{lineupSong.notes}</p>}
                   </div>
-                  <span className="w-fit rounded-md bg-amber-100 px-3 py-2 font-bold text-amber-900">Key: {lineupSong.selectedKey}</span>
+                  
+                  <div className="flex flex-col items-end gap-3 sm:ml-4">
+                    <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 shadow-inner">
+                      <button className="grid size-8 place-items-center rounded-md text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-sm transition" onClick={() => updateSongKey(index, -1)} title="Transpose Down">
+                        <ChevronDown size={18} />
+                      </button>
+                      <div className="flex flex-col items-center justify-center min-w-[3.5rem] px-2 py-1 bg-white rounded-md shadow-sm border border-slate-200">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none mb-1">Key</span>
+                        <span className="text-base font-bold text-blue-700 leading-none">{lineupSong.selectedKey}</span>
+                      </div>
+                      <button className="grid size-8 place-items-center rounded-md text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-sm transition" onClick={() => updateSongKey(index, 1)} title="Transpose Up">
+                        <ChevronUp size={18} />
+                      </button>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      {song && (
+                        <Link to={`/songs/${song.id}`} className="btn-secondary !py-1.5 !px-3 text-xs" title="Song Details">
+                          <BookOpen size={14} /> Details
+                        </Link>
+                      )}
+                      {song?.youtubeLink && (
+                        <a href={song.youtubeLink} target="_blank" rel="noopener noreferrer" className="btn-secondary !py-1.5 !px-3 text-xs !text-red-600 hover:!bg-red-50 hover:!border-red-200" title="Open YouTube">
+                          <Youtube size={14} /> Listen
+                        </a>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <pre className="chord-sheet mt-4">{song ? transposeChords(song.chordChart, delta) || 'No chord chart added.' : 'Song not found in library.'}</pre>
+                
+                <div className="mt-2 ml-10">
+                  <pre className="chord-sheet !p-4 !text-[14px] !bg-slate-900/95">{song ? transposeChords(song.chordChart, delta) || 'No chord chart added.' : 'Song not found in library.'}</pre>
+                </div>
               </article>
             );
           })}

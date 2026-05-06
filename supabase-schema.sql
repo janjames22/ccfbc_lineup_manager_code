@@ -16,6 +16,7 @@ CREATE TABLE songs (
     tempo TEXT DEFAULT '',
     category TEXT DEFAULT 'Worship',
     language TEXT DEFAULT '',
+    youtube_link TEXT DEFAULT '',
     chord_chart TEXT DEFAULT '',
     lyrics_monitor JSONB DEFAULT '[]'::jsonb,
     notes TEXT DEFAULT '',

@@ -13,6 +13,7 @@ const blankSong = {
   tempo: '',
   category: 'Worship',
   language: 'Filipino',
+  youtubeLink: '',
   chordChart: '',
   lyricsMonitor: [],
   notes: '',
@@ -132,10 +133,17 @@ export default function SongForm() {
             </label>
           </div>
 
-          <label>
-            <span className="label">Category</span>
-            <input className="input" value={song.category} onChange={(event) => update('category', event.target.value)} />
-          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label>
+              <span className="label">Category</span>
+              <input className="input" value={song.category} onChange={(event) => update('category', event.target.value)} />
+            </label>
+
+            <label>
+              <span className="label">YouTube Reference Link</span>
+              <input className="input" type="url" placeholder="https://youtube.com/watch?v=..." value={song.youtubeLink} onChange={(event) => update('youtubeLink', event.target.value)} />
+            </label>
+          </div>
 
           <label>
             <span className="label">Chord Chart</span>

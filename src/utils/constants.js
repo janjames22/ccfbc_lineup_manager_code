@@ -4,6 +4,8 @@ export const SECTION_TYPES = [
   'Intro',
   'Verse 1',
   'Verse 2',
+  'Verse 3',
+  'Verse 4',
   'Pre-Chorus',
   'Chorus',
   'Bridge',
