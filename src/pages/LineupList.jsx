@@ -49,9 +49,9 @@ export default function LineupList() {
             <article key={lineup.id} className="panel">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="font-semibold text-blue-700">{lineup.date} • {lineup.serviceTime}</p>
-                  <h2 className="text-xl font-bold text-slate-950">{lineup.worshipLeader || 'Worship Leader TBD'}</h2>
-                  <p className="text-sm text-slate-600">{lineup.songs.length} songs</p>
+                  <p className="text-xs font-black uppercase tracking-widest text-blue-400">{lineup.date} • {lineup.serviceTime}</p>
+                  <h2 className="mt-0.5 text-xl font-black text-white leading-tight">{lineup.worshipLeader || 'Worship Leader TBD'}</h2>
+                  <p className="text-sm font-bold text-slate-500">{lineup.songs.length} songs</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Link className="btn-secondary" to={`/lineups/${lineup.id}`}><Eye size={16} aria-hidden="true" /> View</Link>

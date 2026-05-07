@@ -3,21 +3,21 @@ import { NavLink, Link } from 'react-router-dom';
 import OfflineStatusBadge from './OfflineStatusBadge';
 
 const navLink = ({ isActive }) =>
-  `inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition ${
-    isActive ? 'bg-blue-700 text-white' : 'text-slate-700 hover:bg-blue-50 hover:text-blue-700'
+  `inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold transition-all duration-200 ${
+    isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
   }`;
 
 export default function Navbar() {
   return (
-    <header className="border-b border-slate-200 bg-white/95 backdrop-blur print:hidden">
-      <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-        <Link to="/" className="flex items-center gap-3">
-          <span className="grid size-10 place-items-center rounded-md bg-blue-700 text-white">
-            <Music2 size={22} aria-hidden="true" />
-          </span>
+    <header className="border-b border-slate-800/50 bg-slate-900/95 backdrop-blur-md sticky top-0 z-40 print:hidden">
+      <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+        <Link to="/" className="flex items-center gap-3 group">
+          <div className="relative size-10 overflow-hidden rounded-xl bg-slate-800 p-1 ring-1 ring-white/10 group-hover:ring-white/20 transition-all shadow-lg">
+            <img src="/logo.png" alt="Line Up Manager Logo" className="h-full w-full object-contain" />
+          </div>
           <span>
-            <span className="block text-base font-bold text-slate-950">Worship Chords</span>
-            <span className="block text-xs text-slate-500">Sunday Lineup Manager</span>
+            <span className="block text-base font-extrabold text-white tracking-tight group-hover:text-blue-400 transition-colors">Line Up Manager</span>
+            <span className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">Official App</span>
           </span>
         </Link>
         <nav className="flex flex-wrap items-center gap-2">

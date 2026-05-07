@@ -54,19 +54,19 @@ export default function Dashboard() {
         <div className="panel">
           <div className="mb-6 flex items-center justify-between">
             <h2 className="section-title">Upcoming Sunday Lineup</h2>
-            <Link to="/lineups" className="text-sm font-bold text-blue-600 hover:text-blue-800 transition-colors">View all</Link>
+            <Link to="/lineups" className="text-sm font-bold text-blue-400 hover:text-blue-300 transition-colors">View all</Link>
           </div>
           {upcoming ? (
             <div className="space-y-5">
-              <div className="rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50/50 p-5 border border-blue-100/50">
-                <p className="text-xs font-bold uppercase tracking-wider text-blue-700">{upcoming.date} • {upcoming.serviceTime}</p>
-                <h3 className="mt-1.5 text-2xl font-extrabold text-slate-900">{upcoming.worshipLeader || 'Worship Leader TBD'}</h3>
+              <div className="rounded-2xl bg-gradient-to-br from-blue-900/30 to-indigo-900/10 p-6 border border-blue-500/20 shadow-inner">
+                <p className="text-[10px] font-black uppercase tracking-widest text-blue-400">{upcoming.date} • {upcoming.serviceTime}</p>
+                <h3 className="mt-1 text-2xl font-black text-white">{upcoming.worshipLeader || 'Worship Leader TBD'}</h3>
               </div>
               <ol className="space-y-3">
                 {upcoming.songs.map((song, index) => (
-                  <li key={`${song.id || song.songId}-${index}`} className="flex items-center justify-between rounded-xl border border-slate-200/60 bg-slate-50/50 p-3.5 transition hover:bg-slate-50 hover:border-slate-300">
-                    <span className="font-semibold text-slate-800">{index + 1}. {song.title}</span>
-                    <span className="rounded-lg bg-amber-100/80 px-2.5 py-1 text-xs font-bold text-amber-900 shadow-sm border border-amber-200/50">{song.selectedKey}</span>
+                  <li key={`${song.id || song.songId}-${index}`} className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/40 p-4 transition hover:bg-slate-800/60 hover:border-slate-700">
+                    <span className="font-bold text-slate-200">{index + 1}. {song.title}</span>
+                    <span className="rounded-lg bg-amber-950/40 px-3 py-1 text-xs font-black text-amber-400 shadow-sm border border-amber-900/50">{song.selectedKey}</span>
                   </li>
                 ))}
               </ol>
@@ -78,9 +78,9 @@ export default function Dashboard() {
               </div>
             </div>
           ) : (
-            <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 p-8 text-center transition hover:border-slate-300">
-              <p className="text-slate-500 font-medium">No upcoming lineup yet.</p>
-              <Link className="btn-primary mt-5 mx-auto" to="/lineups/new">Create Sunday Lineup</Link>
+            <div className="rounded-3xl border-2 border-dashed border-slate-800 bg-slate-950/20 p-10 text-center transition hover:border-slate-700">
+              <p className="text-slate-500 font-bold">No upcoming lineup yet.</p>
+              <Link className="btn-primary mt-6 mx-auto px-8" to="/lineups/new">Create Sunday Lineup</Link>
             </div>
           )}
         </div>
@@ -89,34 +89,34 @@ export default function Dashboard() {
           <h2 className="section-title mb-6">Quick Actions</h2>
           <div className="grid gap-3">
             <Link className="quick-action" to="/songs">
-              <span className="grid size-10 place-items-center rounded-lg bg-blue-100 text-blue-700 shadow-sm"><Library size={20} aria-hidden="true" /></span>
+              <span className="grid size-10 place-items-center rounded-lg bg-blue-950/50 text-blue-400 shadow-sm ring-1 ring-white/10"><Library size={20} aria-hidden="true" /></span>
               <span className="flex flex-col">
-                <span className="font-bold text-slate-900">View Song Library</span>
-                <span className="text-xs font-medium text-slate-500">Browse and search chords</span>
+                <span className="font-black text-white tracking-tight">View Song Library</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Browse and search chords</span>
               </span>
             </Link>
             <Link className="quick-action" to="/songs/new">
-              <span className="grid size-10 place-items-center rounded-lg bg-amber-100 text-amber-700 shadow-sm"><Music2 size={20} aria-hidden="true" /></span>
+              <span className="grid size-10 place-items-center rounded-lg bg-amber-950/50 text-amber-500 shadow-sm ring-1 ring-white/10"><Music2 size={20} aria-hidden="true" /></span>
               <span className="flex flex-col">
-                <span className="font-bold text-slate-900">Add Chord Chart</span>
-                <span className="text-xs font-medium text-slate-500">Add a new song to your library</span>
+                <span className="font-black text-white tracking-tight">Add Chord Chart</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Add a new song to your library</span>
               </span>
             </Link>
             <Link className="quick-action" to="/lineups/new">
-              <span className="grid size-10 place-items-center rounded-lg bg-emerald-100 text-emerald-700 shadow-sm"><CalendarPlus size={20} aria-hidden="true" /></span>
+              <span className="grid size-10 place-items-center rounded-lg bg-emerald-950/50 text-emerald-500 shadow-sm ring-1 ring-white/10"><CalendarPlus size={20} aria-hidden="true" /></span>
               <span className="flex flex-col">
-                <span className="font-bold text-slate-900">Build Sunday Lineup</span>
-                <span className="text-xs font-medium text-slate-500">Plan a new service</span>
+                <span className="font-black text-white tracking-tight">Build Sunday Lineup</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Plan a new service</span>
               </span>
             </Link>
           </div>
         </div>
       </section>
 
-      <section className="mt-8">
-        <div className="mb-4 flex items-center justify-between">
+      <section className="mt-12">
+        <div className="mb-6 flex items-center justify-between">
           <h2 className="section-title">Recently Added Songs</h2>
-          <Link to="/songs" className="text-sm font-semibold text-blue-700 hover:text-blue-900">Open library</Link>
+          <Link to="/songs" className="text-sm font-black text-blue-400 hover:text-blue-300">Open library</Link>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {recentSongs.map((song) => <SongCard key={song.id} song={song} />)}

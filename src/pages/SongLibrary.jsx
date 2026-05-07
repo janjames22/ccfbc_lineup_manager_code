@@ -64,7 +64,7 @@ export default function SongLibrary() {
         <div className="grid gap-3 md:grid-cols-[1.5fr_0.7fr_0.7fr_0.7fr]">
           <label className="relative block">
             <span className="sr-only">Search songs</span>
-            <Search className="pointer-events-none absolute left-3 top-3 text-slate-400" size={18} aria-hidden="true" />
+            <Search className="pointer-events-none absolute left-3 top-3 text-blue-400" size={18} aria-hidden="true" />
             <input className="input pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title or artist" />
           </label>
           <select className="input" value={keyFilter} onChange={(event) => setKeyFilter(event.target.value)}>

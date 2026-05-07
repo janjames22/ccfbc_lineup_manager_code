@@ -11,11 +11,39 @@ import LineupView from './pages/LineupView';
 import LyricsMonitorPage from './pages/LyricsMonitorPage';
 import PrintExportView from './pages/PrintExportView';
 
+import { useRegisterSW } from 'virtual:pwa-register/react';
+import UpdatePrompt from './components/UpdatePrompt';
+
 export default function App() {
+  const {
+    offlineReady: [offlineReady, setOfflineReady],
+    needUpdate: [needUpdate, setNeedUpdate],
+    updateServiceWorker,
+  } = useRegisterSW({
+    onRegistered(r) {
+      console.log('SW Registered');
+    },
+    onRegisterError(error) {
+      console.log('SW registration error', error);
+    },
+  });
+
+  const closeUpdatePrompt = () => {
+    setOfflineReady(false);
+    setNeedUpdate(false);
+  };
+
   return (
-    <div className="min-h-screen bg-stone-50 text-slate-900">
+    <div className="min-h-screen bg-slate-950 text-slate-100 selection:bg-blue-500/30">
       <Navbar />
       <InstallBanner />
+      
+      {needUpdate && (
+        <UpdatePrompt 
+          onUpdate={() => updateServiceWorker(true)} 
+          onDismiss={closeUpdatePrompt} 
+        />
+      )}
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/songs" element={<SongLibrary />} />

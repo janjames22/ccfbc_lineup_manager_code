@@ -111,35 +111,35 @@ export default function LineupView() {
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-1">
-                      <span className="flex size-7 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">{index + 1}</span>
-                      <h2 className="text-2xl font-bold text-slate-900">{lineupSong.title}</h2>
+                      <span className="flex size-7 items-center justify-center rounded-full bg-blue-950 text-sm font-black text-blue-400 ring-1 ring-blue-500/20 shadow-lg">{index + 1}</span>
+                      <h2 className="text-2xl font-black text-white tracking-tight">{lineupSong.title}</h2>
                     </div>
-                    {song?.artist && <p className="text-slate-500 font-medium ml-10">{song.artist}</p>}
-                    {lineupSong.notes && <p className="mt-2 ml-10 text-sm text-slate-600 bg-slate-50 p-2 rounded-md border border-slate-100">{lineupSong.notes}</p>}
+                    {song?.artist && <p className="text-slate-400 font-bold ml-10">{song.artist}</p>}
+                    {lineupSong.notes && <p className="mt-2 ml-10 text-sm font-medium text-slate-300 bg-slate-950/50 p-3 rounded-xl border border-slate-800/50">{lineupSong.notes}</p>}
                   </div>
                   
                   <div className="flex flex-wrap items-center sm:flex-col sm:items-end gap-3 sm:ml-4 mt-2 sm:mt-0">
-                    <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 shadow-inner">
-                      <button className="grid size-8 place-items-center rounded-md text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-sm transition" onClick={() => updateSongKey(index, -1)} title="Transpose Down">
-                        <ChevronDown size={18} />
+                    <div className="flex items-center gap-1 rounded-xl bg-slate-950/50 p-1.5 shadow-inner border border-slate-800/50">
+                      <button className="grid size-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-800 hover:text-white transition-all" onClick={() => updateSongKey(index, -1)} title="Transpose Down">
+                        <ChevronDown size={20} />
                       </button>
-                      <div className="flex flex-col items-center justify-center min-w-[3.5rem] px-2 py-1 bg-white rounded-md shadow-sm border border-slate-200">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none mb-1">Key</span>
-                        <span className="text-base font-bold text-blue-700 leading-none">{lineupSong.selectedKey}</span>
+                      <div className="flex flex-col items-center justify-center min-w-[3.5rem] px-2 py-1 bg-slate-900 rounded-lg shadow-lg border border-slate-700">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Key</span>
+                        <span className="text-base font-black text-blue-400 leading-none">{lineupSong.selectedKey}</span>
                       </div>
-                      <button className="grid size-8 place-items-center rounded-md text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-sm transition" onClick={() => updateSongKey(index, 1)} title="Transpose Up">
-                        <ChevronUp size={18} />
+                      <button className="grid size-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-800 hover:text-white transition-all" onClick={() => updateSongKey(index, 1)} title="Transpose Up">
+                        <ChevronUp size={20} />
                       </button>
                     </div>
                     
                     <div className="flex items-center gap-2">
                       {song && (
-                        <Link to={`/songs/${song.id}`} className="btn-secondary !py-1.5 !px-3 text-xs" title="Song Details">
+                        <Link to={`/songs/${song.id}`} className="btn-secondary !py-2 !px-3.5 text-xs font-black uppercase tracking-wider" title="Song Details">
                           <BookOpen size={14} /> Details
                         </Link>
                       )}
                       {song?.youtubeLink && (
-                        <a href={song.youtubeLink} target="_blank" rel="noopener noreferrer" className="btn-secondary !py-1.5 !px-3 text-xs !text-red-600 hover:!bg-red-50 hover:!border-red-200" title="Open YouTube">
+                        <a href={song.youtubeLink} target="_blank" rel="noopener noreferrer" className="btn-secondary !py-2 !px-3.5 text-xs font-black uppercase tracking-wider !text-red-500 hover:!bg-red-950/50 hover:!border-red-900/50" title="Open YouTube">
                           <Youtube size={14} /> Listen
                         </a>
                       )}
@@ -148,7 +148,7 @@ export default function LineupView() {
                 </div>
                 
                 <div className="mt-2 ml-10">
-                  <pre className="chord-sheet !p-4 !text-[14px] !bg-slate-900/95">{song ? transposeChords(song.chordChart, delta) || 'No chord chart added.' : 'Song not found in library.'}</pre>
+                  <pre className="chord-sheet !p-5 !text-[14px] !bg-slate-950/80 !border-slate-800/50">{song ? transposeChords(song.chordChart, delta) || 'No chord chart added.' : 'Song not found in library.'}</pre>
                 </div>
               </article>
             );
@@ -158,14 +158,14 @@ export default function LineupView() {
         <aside className="space-y-6">
           <section className="panel">
             <h2 className="section-title">Team Assignments</h2>
-            <div className="mt-4">
+            <div className="mt-6">
               <TeamAssignments musicians={lineup.musicians} readOnly />
             </div>
           </section>
           {lineup.generalNotes && (
             <section className="panel">
               <h2 className="section-title">General Reminders</h2>
-              <p className="mt-3 whitespace-pre-wrap text-slate-700">{lineup.generalNotes}</p>
+              <p className="mt-4 whitespace-pre-wrap text-slate-300 font-medium leading-relaxed">{lineup.generalNotes}</p>
             </section>
           )}
         </aside>

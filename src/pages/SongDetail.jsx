@@ -84,36 +84,42 @@ export default function SongDetail() {
           <Info label="Category" value={song.category || '-'} />
           <Info label="Language" value={song.language || '-'} />
         </div>
-        <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-5">
-          <button className="btn-secondary" type="button" onClick={() => setTransposeAmount((value) => Math.max(-12, value - 1))}>-</button>
-          <span className="min-w-28 text-center text-lg font-bold">{transposeAmount > 0 ? `+${transposeAmount}` : transposeAmount}</span>
-          <button className="btn-secondary" type="button" onClick={() => setTransposeAmount((value) => Math.min(12, value + 1))}>+</button>
-          <button className="btn-secondary" type="button" onClick={() => setTransposeAmount(0)}>Reset</button>
+        <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-800/50 pt-6">
+          <button className="btn-secondary min-w-10 !text-xl" type="button" onClick={() => setTransposeAmount((value) => Math.max(-12, value - 1))}>-</button>
+          <div className="flex min-w-32 flex-col items-center justify-center rounded-xl bg-slate-950 p-2 ring-1 ring-white/10 shadow-inner">
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Transpose</span>
+            <span className="text-xl font-black text-white">{transposeAmount > 0 ? `+${transposeAmount}` : transposeAmount}</span>
+          </div>
+          <button className="btn-secondary min-w-10 !text-xl" type="button" onClick={() => setTransposeAmount((value) => Math.min(12, value + 1))}>+</button>
+          <button className="btn-secondary ml-2 font-black uppercase tracking-wider text-xs" type="button" onClick={() => setTransposeAmount(0)}>Reset</button>
         </div>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[1fr_0.65fr]">
         <div className="panel">
           <h2 className="section-title">Chord Chart</h2>
-          <pre className="chord-sheet mt-4">{transposedChart || 'No chord chart added yet.'}</pre>
+          <pre className="chord-sheet mt-5 !bg-slate-950/80">{transposedChart || 'No chord chart added yet.'}</pre>
         </div>
         <aside className="space-y-6">
           <div className="panel">
             <h2 className="section-title">Lyrics Monitor Cues</h2>
-            <div className="mt-4 space-y-3">
+            <div className="mt-5 space-y-4">
               {song.lyricsMonitor.length ? song.lyricsMonitor.map((section, index) => (
-                <div key={`${section.section}-${index}`} className="rounded-lg bg-slate-50 p-4">
-                  <p className="font-semibold text-slate-950">{section.section}</p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{section.text || 'No cue text.'}</p>
-                  {section.vocalNotes && <p className="mt-2 text-sm text-blue-700">{section.vocalNotes}</p>}
+                <div key={`${section.section}-${index}`} className="rounded-2xl bg-slate-950/40 p-5 border border-slate-800/50">
+                  <p className="text-xs font-black uppercase tracking-widest text-blue-400">{section.section}</p>
+                  <p className="mt-2.5 whitespace-pre-wrap text-base font-medium text-slate-200">{section.text || 'No cue text.'}</p>
+                  {section.vocalNotes && <p className="mt-3 text-sm font-bold text-blue-300 flex items-center gap-2">
+                    <span className="size-1.5 rounded-full bg-blue-500"></span>
+                    {section.vocalNotes}
+                  </p>}
                 </div>
-              )) : <p className="text-sm text-slate-600">No lyrics monitor sections added.</p>}
+              )) : <p className="text-sm font-bold text-slate-500">No lyrics monitor sections added.</p>}
             </div>
           </div>
           {song.notes && (
             <div className="panel">
               <h2 className="section-title">Arrangement Notes</h2>
-              <p className="mt-3 whitespace-pre-wrap text-slate-700">{song.notes}</p>
+              <p className="mt-4 whitespace-pre-wrap text-slate-300 font-medium leading-relaxed">{song.notes}</p>
             </div>
           )}
         </aside>
@@ -124,9 +130,9 @@ export default function SongDetail() {
 
 function Info({ label, value, highlight = false }) {
   return (
-    <div>
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className={`text-lg font-bold ${highlight ? 'text-blue-700' : 'text-slate-950'}`}>{value}</p>
+    <div className="rounded-xl bg-slate-950/30 p-4 border border-slate-800/50">
+      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
+      <p className={`mt-1 text-xl font-black ${highlight ? 'text-blue-400' : 'text-white'}`}>{value}</p>
     </div>
   );
 }

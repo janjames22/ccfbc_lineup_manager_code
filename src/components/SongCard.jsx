@@ -8,19 +8,19 @@ export default function SongCard({ song }) {
       <div>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">{song.title}</h2>
-            <p className="mt-0.5 text-sm font-medium text-slate-600">{song.artist || 'Unknown artist'}</p>
+            <h2 className="text-xl font-black text-white leading-tight">{song.title}</h2>
+            <p className="mt-0.5 text-sm font-bold text-slate-400">{song.artist || 'Unknown artist'}</p>
           </div>
-          <span className="rounded-lg bg-blue-100/80 px-3 py-1.5 text-sm font-bold text-blue-800 shadow-sm border border-blue-200/50">{song.selectedKey || song.originalKey}</span>
+          <span className="rounded-lg bg-blue-950/40 px-3 py-1.5 text-sm font-black text-blue-400 shadow-sm border border-blue-900/50">{song.selectedKey || song.originalKey}</span>
         </div>
         <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
-          <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-100">
-            <dt className="text-xs font-bold uppercase tracking-wider text-slate-400">Category</dt>
-            <dd className="mt-0.5 font-semibold text-slate-800">{song.category || '-'}</dd>
+          <div className="rounded-xl bg-slate-950/50 p-2.5 border border-slate-800/50">
+            <dt className="text-[10px] font-black uppercase tracking-widest text-slate-500">Category</dt>
+            <dd className="mt-0.5 font-bold text-slate-200">{song.category || '-'}</dd>
           </div>
-          <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-100">
-            <dt className="text-xs font-bold uppercase tracking-wider text-slate-400">BPM</dt>
-            <dd className="mt-0.5 font-semibold text-slate-800">{formatBpm(song.tempo)}</dd>
+          <div className="rounded-xl bg-slate-950/50 p-2.5 border border-slate-800/50">
+            <dt className="text-[10px] font-black uppercase tracking-widest text-slate-500">BPM</dt>
+            <dd className="mt-0.5 font-bold text-slate-200">{formatBpm(song.tempo)}</dd>
           </div>
         </dl>
       </div>
