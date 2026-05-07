@@ -15,18 +15,23 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
 import UpdatePrompt from './components/UpdatePrompt';
 
 export default function App() {
-  const {
-    offlineReady: [offlineReady, setOfflineReady],
-    needUpdate: [needUpdate, setNeedUpdate],
-    updateServiceWorker,
-  } = useRegisterSW({
-    onRegistered(r) {
-      console.log('SW Registered');
-    },
-    onRegisterError(error) {
-      console.log('SW registration error', error);
-    },
+  const registerSWResult = useRegisterSW({
+    onRegistered(r) { console.log('SW Registered'); },
+    onRegisterError(error) { console.error('SW registration error', error); },
   });
+
+  // Safe destructuring with type guards
+  const [offlineReady, setOfflineReady] = Array.isArray(registerSWResult?.offlineReady) 
+    ? registerSWResult.offlineReady 
+    : [false, () => {}];
+    
+  const [needUpdate, setNeedUpdate] = Array.isArray(registerSWResult?.needUpdate) 
+    ? registerSWResult.needUpdate 
+    : [false, () => {}];
+    
+  const updateServiceWorker = typeof registerSWResult?.updateServiceWorker === 'function'
+    ? registerSWResult.updateServiceWorker
+    : () => {};
 
   const closeUpdatePrompt = () => {
     setOfflineReady(false);
