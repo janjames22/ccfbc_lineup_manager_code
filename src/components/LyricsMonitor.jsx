@@ -2,10 +2,46 @@ import { ChevronLeft, ChevronRight, Maximize, Palette } from 'lucide-react';
 import { useState } from 'react';
 
 const themes = [
-  { name: 'Dark Void', classes: 'bg-slate-950 text-white' },
-  { name: 'Deep Sea', classes: 'bg-gradient-to-br from-slate-900 to-blue-950 text-white' },
-  { name: 'Sunset', classes: 'bg-gradient-to-br from-slate-900 via-purple-950 to-rose-950 text-white' },
-  { name: 'Forest', classes: 'bg-gradient-to-br from-slate-900 to-emerald-950 text-white' }
+  {
+    name: 'Dark Void',
+    classes: 'bg-slate-950 text-white',
+    labelClasses: 'text-amber-300',
+    notesClasses: 'text-blue-200',
+    repeatClasses: 'text-slate-300',
+    glowClasses: 'bg-transparent',
+  },
+  {
+    name: 'Deep Sea',
+    classes: 'bg-gradient-to-br from-slate-900 to-blue-950 text-white',
+    labelClasses: 'text-cyan-300',
+    notesClasses: 'text-sky-200',
+    repeatClasses: 'text-slate-200',
+    glowClasses: 'bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),transparent_38%)]',
+  },
+  {
+    name: 'Sunset',
+    classes: 'bg-gradient-to-br from-slate-900 via-purple-950 to-rose-950 text-white',
+    labelClasses: 'text-rose-300',
+    notesClasses: 'text-orange-100',
+    repeatClasses: 'text-rose-100',
+    glowClasses: 'bg-[radial-gradient(circle_at_top,rgba(251,113,133,0.18),transparent_40%)]',
+  },
+  {
+    name: 'Forest',
+    classes: 'bg-gradient-to-br from-slate-900 to-emerald-950 text-white',
+    labelClasses: 'text-emerald-300',
+    notesClasses: 'text-lime-100',
+    repeatClasses: 'text-emerald-100',
+    glowClasses: 'bg-[radial-gradient(circle_at_top,rgba(52,211,153,0.16),transparent_40%)]',
+  },
+  {
+    name: 'Pink',
+    classes: 'bg-gradient-to-br from-slate-950 via-rose-950 to-fuchsia-950 text-white',
+    labelClasses: 'text-pink-300',
+    notesClasses: 'text-pink-100',
+    repeatClasses: 'text-rose-100',
+    glowClasses: 'bg-[radial-gradient(circle_at_top,rgba(244,114,182,0.24),transparent_42%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.16),transparent_34%)]',
+  }
 ];
 
 export default function LyricsMonitor({ title, keyName, sections, index, onIndexChange, backAction }) {
@@ -13,6 +49,7 @@ export default function LyricsMonitor({ title, keyName, sections, index, onIndex
   const currentIndex = Math.min(index, safeSections.length - 1);
   const current = safeSections[currentIndex];
   const [themeIndex, setThemeIndex] = useState(0);
+  const activeTheme = themes[themeIndex];
 
   const go = (delta) => onIndexChange(Math.max(0, Math.min(safeSections.length - 1, currentIndex + delta)));
   const toggleFullscreen = () => {
@@ -22,13 +59,13 @@ export default function LyricsMonitor({ title, keyName, sections, index, onIndex
   const toggleTheme = () => setThemeIndex((prev) => (prev + 1) % themes.length);
 
   return (
-    <main className={`flex min-h-dvh flex-col transition-colors duration-700 ease-in-out ${themes[themeIndex].classes}`}>
+    <main className={`flex min-h-dvh flex-col transition-colors duration-700 ease-in-out ${activeTheme.classes}`}>
       <div 
         className="flex flex-col gap-3 border-b border-white/10 px-4 py-4 backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between sm:px-6 print:hidden"
         style={{ paddingTop: 'env(safe-area-inset-top, 1rem)' }}
       >
         <div>
-          <p className="text-sm font-medium tracking-wider text-amber-300 opacity-90">{keyName ? `KEY: ${keyName}` : 'LYRICS MONITOR'}</p>
+          <p className={`text-sm font-medium tracking-wider opacity-90 ${activeTheme.labelClasses}`}>{keyName ? `KEY: ${keyName}` : 'LYRICS MONITOR'}</p>
           <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -50,11 +87,12 @@ export default function LyricsMonitor({ title, keyName, sections, index, onIndex
       </div>
 
       <section className="grid flex-1 place-items-center px-4 py-10 text-center relative overflow-hidden">
+        <div className={`pointer-events-none absolute inset-0 transition-opacity duration-700 ${activeTheme.glowClasses}`} aria-hidden="true" />
         <div key={currentIndex} className="w-full max-w-6xl animate-fade-in relative z-10">
-          <p className="mb-8 text-xl font-bold tracking-[0.2em] uppercase text-amber-300 opacity-90 drop-shadow-md">{current.section}</p>
+          <p className={`mb-8 text-xl font-bold tracking-[0.2em] uppercase opacity-90 drop-shadow-md ${activeTheme.labelClasses}`}>{current.section}</p>
           <pre className="whitespace-pre-wrap font-sans text-[2rem] md:text-5xl lg:text-[4rem] font-bold leading-[1.3] text-white drop-shadow-lg">{current.text || 'No cue text for this section.'}</pre>
-          {current.vocalNotes && <p className="mt-12 text-2xl font-medium text-blue-200 drop-shadow-md">{current.vocalNotes}</p>}
-          {current.repeatCount && <p className="mt-4 text-xl font-medium text-slate-300 drop-shadow-md">Repeat: {current.repeatCount}</p>}
+          {current.vocalNotes && <p className={`mt-12 text-2xl font-medium drop-shadow-md ${activeTheme.notesClasses}`}>{current.vocalNotes}</p>}
+          {current.repeatCount && <p className={`mt-4 text-xl font-medium drop-shadow-md ${activeTheme.repeatClasses}`}>Repeat: {current.repeatCount}</p>}
         </div>
       </section>
 
