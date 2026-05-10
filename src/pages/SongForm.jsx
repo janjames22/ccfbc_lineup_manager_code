@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from 'lucide-react';
+import { Copy, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
@@ -20,6 +20,13 @@ const blankSong = {
   lyricsMonitor: [],
   notes: '',
 };
+
+const createBlankLyricsSection = () => ({
+  section: 'Verse 1',
+  text: '',
+  vocalNotes: '',
+  repeatCount: '',
+});
 
 const normalizeSectionName = (name = '') =>
   String(name).toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -92,7 +99,15 @@ export default function SongForm() {
   };
 
   const addSection = () => {
-    update('lyricsMonitor', [...song.lyricsMonitor, { section: 'Verse 1', text: '', vocalNotes: '', repeatCount: '' }]);
+    update('lyricsMonitor', [...song.lyricsMonitor, createBlankLyricsSection()]);
+  };
+
+  const addSectionBelow = (index) => {
+    setSong((current) => {
+      const nextLyricsMonitor = [...current.lyricsMonitor];
+      nextLyricsMonitor.splice(index + 1, 0, createBlankLyricsSection());
+      return { ...current, lyricsMonitor: nextLyricsMonitor };
+    });
   };
 
   const handleSectionTypeChange = (index, value) => {
@@ -124,17 +139,6 @@ export default function SongForm() {
       const nextLyricsMonitor = [...current.lyricsMonitor];
       const sectionToDuplicate = current.lyricsMonitor[index];
       nextLyricsMonitor.splice(index + 1, 0, { ...sectionToDuplicate });
-      return { ...current, lyricsMonitor: nextLyricsMonitor };
-    });
-  };
-
-  const moveSection = (index, direction) => {
-    setSong((current) => {
-      const targetIndex = index + direction;
-      if (targetIndex < 0 || targetIndex >= current.lyricsMonitor.length) return current;
-
-      const nextLyricsMonitor = [...current.lyricsMonitor];
-      [nextLyricsMonitor[index], nextLyricsMonitor[targetIndex]] = [nextLyricsMonitor[targetIndex], nextLyricsMonitor[index]];
       return { ...current, lyricsMonitor: nextLyricsMonitor };
     });
   };
@@ -307,18 +311,15 @@ export default function SongForm() {
                       </label>
                     )}
 
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      <button className="btn-secondary !px-3" type="button" onClick={() => duplicateSection(index)}>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <button className="btn-secondary w-full !px-3" type="button" onClick={() => duplicateSection(index)}>
                         <Copy size={16} aria-hidden="true" /> Duplicate
                       </button>
-                      <button className="btn-secondary !px-3" type="button" onClick={() => moveSection(index, -1)} disabled={index === 0}>
-                        <ArrowUp size={16} aria-hidden="true" /> Move Up
-                      </button>
-                      <button className="btn-secondary !px-3" type="button" onClick={() => moveSection(index, 1)} disabled={index === song.lyricsMonitor.length - 1}>
-                        <ArrowDown size={16} aria-hidden="true" /> Move Down
-                      </button>
-                      <button className="btn-danger !px-3" type="button" onClick={() => removeSection(index)}>
+                      <button className="btn-danger w-full !px-3" type="button" onClick={() => removeSection(index)}>
                         <Trash2 size={16} aria-hidden="true" /> Delete
+                      </button>
+                      <button className="btn-primary w-full !px-3" type="button" onClick={() => addSectionBelow(index)}>
+                        <Plus size={16} aria-hidden="true" /> Add Section Below
                       </button>
                     </div>
                   </div>
