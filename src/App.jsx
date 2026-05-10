@@ -20,7 +20,9 @@ import { useToast } from './hooks/useToast';
 
 const UPDATE_CHECK_TIMEOUT_MS = 5000;
 const FOREGROUND_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+const UPDATE_ACTIVATION_TIMEOUT_MS = 4000;
 const IS_DEV = import.meta.env.DEV;
+const UPDATE_RELOAD_MARKER_KEY = 'pwa-update-reload-reason';
 
 function devLog(...args) {
   if (IS_DEV) console.log(...args);
@@ -30,6 +32,7 @@ export default function App() {
   const registrationRef = useRef(null);
   const lastUpdateCheckAtRef = useRef(0);
   const waitingWorkerLoggedRef = useRef(false);
+  const reloadTriggeredRef = useRef(false);
   const [swRegistration, setSwRegistration] = useState(null);
   const [manualNeedUpdate, setManualNeedUpdate] = useState(false);
   const [checkingForUpdate, setCheckingForUpdate] = useState(false);
@@ -82,10 +85,6 @@ export default function App() {
     ? registerSWResult.needUpdate 
     : [false, () => {}];
     
-  const updateServiceWorker = typeof registerSWResult?.updateServiceWorker === 'function'
-    ? registerSWResult.updateServiceWorker
-    : () => {};
-
   const promptVisible = needUpdate || manualNeedUpdate;
 
   useEffect(() => {
@@ -99,12 +98,21 @@ export default function App() {
 
   useEffect(() => {
     if (!IS_DEV) return undefined;
-    if (sessionStorage.getItem('pwa-update-applied') === '1') {
-      devLog('app reloaded');
-      sessionStorage.removeItem('pwa-update-applied');
+    const reloadReason = sessionStorage.getItem(UPDATE_RELOAD_MARKER_KEY);
+    if (reloadReason) {
+      devLog('page reloaded', { reason: reloadReason });
+      sessionStorage.removeItem(UPDATE_RELOAD_MARKER_KEY);
     }
     return undefined;
   }, []);
+
+  const reloadAppForUpdate = (reason) => {
+    if (reloadTriggeredRef.current) return;
+    reloadTriggeredRef.current = true;
+    if (IS_DEV) devLog('page reloaded', { reason });
+    sessionStorage.setItem(UPDATE_RELOAD_MARKER_KEY, reason);
+    window.location.reload();
+  };
 
   useEffect(() => {
     if (!swRegistration) return undefined;
@@ -209,11 +217,45 @@ export default function App() {
   };
 
   const handleAcceptUpdate = () => {
-    if (IS_DEV) {
-      devLog('update accepted');
-      sessionStorage.setItem('pwa-update-applied', '1');
+    devLog('update button clicked');
+
+    const registration = registrationRef.current;
+    const waitingWorker = registration?.waiting;
+
+    if (!waitingWorker) {
+      devLog('waiting service worker found', false);
+      showToast('No update is waiting right now. Please check again.', 'info');
+      closeUpdatePrompt();
+      return;
     }
-    updateServiceWorker(true);
+
+    devLog('waiting service worker found', true);
+    closeUpdatePrompt();
+
+    const handleControllerChange = () => {
+      devLog('controller changed');
+      window.clearTimeout(fallbackTimer);
+      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+      reloadAppForUpdate('controllerchange');
+    };
+
+    const fallbackTimer = window.setTimeout(() => {
+      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+      reloadAppForUpdate('timeout');
+    }, UPDATE_ACTIVATION_TIMEOUT_MS);
+
+    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
+
+    try {
+      waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+      devLog('SKIP_WAITING sent');
+    } catch (error) {
+      console.error('Failed to message waiting service worker:', error);
+      window.clearTimeout(fallbackTimer);
+      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+      showToast('Unable to apply the update automatically. Reloading now.', 'error');
+      reloadAppForUpdate('postmessage-error');
+    }
   };
 
   const closeUpdatePrompt = () => {
