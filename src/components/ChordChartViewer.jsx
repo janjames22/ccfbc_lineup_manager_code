@@ -122,7 +122,7 @@ export default function ChordChartViewer({
           </button>
         </div>
       )}
-      <pre className={`chord-sheet ${preClassName}`} style={{ fontSize: `${fontSize}px` }}>{chartText}</pre>
+      <pre className={`chord-sheet ${preClassName}`}><code className="chord-sheet-text" style={{ fontSize: `${fontSize}px` }}>{chartText}</code></pre>
     </div>
   );
 }

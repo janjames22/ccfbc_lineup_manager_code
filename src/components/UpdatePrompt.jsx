@@ -2,8 +2,8 @@ import { RefreshCw, X, Sparkles } from 'lucide-react';
 
 export default function UpdatePrompt({ onUpdate, onDismiss }) {
   return (
-    <div className="fixed inset-x-0 top-0 z-[150] p-4 animate-slide-down pointer-events-none print:hidden">
-      <div className="mx-auto max-w-xl pointer-events-auto overflow-hidden rounded-3xl border border-blue-500/30 bg-slate-900/90 p-4 shadow-[0_20px_40px_rgba(0,0,0,0.6)] ring-1 ring-white/10 backdrop-blur-xl">
+    <div className="fixed inset-x-0 top-0 z-[150] p-3 animate-slide-down pointer-events-none print:hidden sm:p-4">
+      <div className="mobile-dialog mx-auto max-w-xl pointer-events-auto border border-blue-500/30 bg-slate-900/90 p-4 shadow-[0_20px_40px_rgba(0,0,0,0.6)] ring-1 ring-white/10 backdrop-blur-xl">
         <div className="flex items-center gap-4">
           <div className="relative shrink-0">
             <div className="absolute inset-0 animate-ping rounded-full bg-blue-500/20"></div>

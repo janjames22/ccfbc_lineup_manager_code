@@ -29,9 +29,9 @@ function ToastItem({ toast }) {
   };
 
   return (
-    <div className={`pointer-events-auto flex items-center gap-3 rounded-2xl border p-4 shadow-2xl backdrop-blur-xl animate-slide-up sm:animate-slide-in-right min-w-[280px] max-w-md ${colors[type]}`}>
+    <div className={`pointer-events-auto flex w-full max-w-[calc(100vw-2rem)] min-w-0 items-center gap-3 rounded-2xl border p-4 shadow-2xl backdrop-blur-xl animate-slide-up sm:animate-slide-in-right sm:max-w-md ${colors[type]}`}>
       <div className="shrink-0">{icons[type]}</div>
-      <p className="flex-1 text-sm font-black tracking-tight">{message}</p>
+      <p className="min-w-0 flex-1 break-words text-sm font-black tracking-tight">{message}</p>
     </div>
   );
 }
