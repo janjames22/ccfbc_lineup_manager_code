@@ -1,6 +1,7 @@
 import { Bell, CheckCheck, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import PhoneNotificationsButton from './PhoneNotificationsButton';
 
 export default function NotificationBell({
   notifications,
@@ -44,13 +45,20 @@ export default function NotificationBell({
 
   const handleNotificationClick = (notification) => {
     console.log('[LineupNotifications] notification row clicked');
-    console.log('[LineupNotifications] clicked:', notification);
+    console.log('[LineupNotifications] clicked notification:', notification);
 
-    if (!notification?.lineupId) return;
+    if (!notification?.lineupId) {
+      console.warn('[LineupNotifications] notification click skipped because lineupId is missing.', notification);
+      return;
+    }
+
+    const targetUrl = `/lineups/${notification.lineupId}`;
+    console.log('[LineupNotifications] lineupId:', notification.lineupId);
+    console.log('[LineupNotifications] navigating to:', targetUrl);
 
     onMarkNotificationRead?.(notification.id);
     setOpen(false);
-    navigate(`/lineups/${notification.lineupId}`);
+    navigate(targetUrl);
   };
 
   return (
@@ -94,6 +102,10 @@ export default function NotificationBell({
               />
               <span>{soundEnabled ? 'On' : 'Off'}</span>
             </label>
+          </div>
+
+          <div className="border-b border-slate-800/80 px-4 py-3">
+            <PhoneNotificationsButton />
           </div>
 
           <div className="max-h-80 overflow-y-auto">

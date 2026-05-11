@@ -129,12 +129,12 @@ export default function useLineupNotifications() {
           console.log('[LineupNotifications] new row:', payload.new);
           console.log('[LineupNotifications] old row:', payload.old);
 
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          if (payload.eventType === 'INSERT') {
             handleNewLineup(payload.new, payload.eventType);
             return;
           }
 
-          console.log('[LineupNotifications] realtime event ignored because it is not INSERT or UPDATE.');
+          console.log('[LineupNotifications] realtime event ignored because it is not INSERT.');
         }
       )
       .subscribe((status) => {

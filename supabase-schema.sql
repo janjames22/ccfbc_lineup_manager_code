@@ -3,6 +3,7 @@
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ============================================
 -- SONGS TABLE
@@ -40,10 +41,24 @@ CREATE TABLE lineups (
 );
 
 -- ============================================
+-- PUSH SUBSCRIPTIONS TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.push_subscriptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    endpoint TEXT UNIQUE NOT NULL,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================
 -- ROW LEVEL SECURITY
 -- ============================================
 ALTER TABLE songs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lineups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
 
 -- ============================================
 -- SONGS POLICIES
@@ -84,11 +99,25 @@ CREATE POLICY "Allow public delete on lineups" ON lineups
     FOR DELETE USING (true);
 
 -- ============================================
+-- PUSH SUBSCRIPTION POLICIES
+-- ============================================
+-- Public clients can register or refresh their own browser endpoint.
+CREATE POLICY "Allow public insert on push subscriptions" ON public.push_subscriptions
+    FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Allow public update on push subscriptions" ON public.push_subscriptions
+    FOR UPDATE USING (true) WITH CHECK (true);
+
+-- No public SELECT policy is added. Server/admin logic should send notifications
+-- with SUPABASE_SERVICE_ROLE_KEY, which bypasses RLS.
+
+-- ============================================
 -- INDEXES FOR PERFORMANCE
 -- ============================================
 CREATE INDEX idx_songs_title ON songs(title);
 CREATE INDEX idx_songs_category ON songs(category);
 CREATE INDEX idx_lineups_date ON lineups(date);
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint ON public.push_subscriptions(endpoint);
 
 -- ============================================
 -- FUNCTION TO AUTO-UPDATE updated_at TIMESTAMP
@@ -107,4 +136,7 @@ CREATE TRIGGER update_songs_updated_at BEFORE UPDATE ON songs
 
 -- Trigger for lineups table
 CREATE TRIGGER update_lineups_updated_at BEFORE UPDATE ON lineups
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_push_subscriptions_updated_at BEFORE UPDATE ON public.push_subscriptions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

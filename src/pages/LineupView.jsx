@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import TeamAssignments from '../components/TeamAssignments';
-import LoadingScreen from '../components/LoadingScreen';
 import ChordChartViewer from '../components/ChordChartViewer';
 import { deleteLineup, getLineupById, getSongs, saveLineup } from '../utils/storage';
 import { useToast } from '../hooks/useToast';
@@ -43,12 +42,18 @@ export default function LineupView() {
     loadData();
   }, [id]);
 
-  if (loading) return <LoadingScreen />;
+  if (loading) {
+    return (
+      <main className="page-shell">
+        <p className="text-slate-300">Loading lineup...</p>
+      </main>
+    );
+  }
 
   if (!lineup) {
     return (
       <main className="page-shell">
-        <p className="text-slate-600">Lineup not found.</p>
+        <p className="text-slate-300">{loading ? 'Loading lineup...' : 'Lineup not found.'}</p>
         {error && <p className="mt-2 text-sm font-semibold text-red-700">{error}</p>}
         <Link className="btn-primary mt-4" to="/lineups"><ArrowLeft size={18} aria-hidden="true" /> Back to Lineups</Link>
       </main>

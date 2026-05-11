@@ -105,10 +105,11 @@ export function createLineupNotification(lineup = {}) {
   if (!lineupId) return null;
 
   return {
-    id: `lineup-${lineupId}-${Date.now()}`,
+    id: globalThis.crypto?.randomUUID?.() || `lineup-${lineupId}-${Date.now()}`,
     type: 'lineup_created',
     title: 'New lineup added',
     lineupId,
+    url: `/lineups/${lineupId}`,
     message: getLineupNotificationMessage(lineup),
     date: lineup.date || '',
     serviceTime: lineup.service_time || lineup.serviceTime || '',

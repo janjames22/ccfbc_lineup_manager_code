@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-/* global __APP_BUILD_VERSION__ */
+/* global __APP_BUILD_VERSION__, clients */
 
 import { clientsClaim, setCacheNameDetails } from 'workbox-core';
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
@@ -67,6 +67,62 @@ self.addEventListener('activate', (event) => {
       });
       await self.clients.claim();
     })()
+  );
+});
+
+self.addEventListener('push', (event) => {
+  let payload = {};
+
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (error) {
+    console.warn('[PWA] push payload could not be parsed as JSON', error);
+  }
+
+  const title = payload.title || 'Line Up Manager';
+  const url = payload.url || '/lineups';
+  const options = {
+    body: payload.body || 'New lineup added',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    tag: payload.lineupId ? `lineup-${payload.lineupId}` : 'lineup-notification',
+    renotify: true,
+    data: {
+      url,
+      lineupId: payload.lineupId || null,
+    },
+  };
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      const hasVisibleClient = clientList.some((client) => client.visibilityState === 'visible');
+      if (hasVisibleClient) return undefined;
+      return self.registration.showNotification(title, options);
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const urlToOpen = new URL(event.notification.data?.url || '/lineups', self.location.origin).href;
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          client.focus();
+          if ('navigate' in client) return client.navigate(urlToOpen);
+          return undefined;
+        }
+      }
+
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+
+      return undefined;
+    })
   );
 });
 

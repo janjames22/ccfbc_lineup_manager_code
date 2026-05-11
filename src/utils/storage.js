@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from './supabase';
 import { emptyMusicians } from './constants';
 import { getOfflineSongs, saveSongsOffline, getOfflineLineups, saveLineupsOffline } from './offlineSync';
 import { markLineupCreatedLocally } from './lineupNotifications';
+import { sendLineupPushNotification } from './pushNotifications';
 
 const SONGS_KEY = 'worshipSongs';
 const LINEUPS_KEY = 'worshipLineups';
@@ -591,9 +592,12 @@ export async function getLineups() {
 export async function getLineupById(id) {
   if (!id) return null;
 
+  const localMatch = getLocalLineups().find((lineup) => lineup.id === id);
+  if (localMatch) return normalizeLineup(localMatch);
+
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     const offlineLineups = await getOfflineLineups();
-    return offlineLineups?.find((lineup) => lineup.id === id) || getLocalLineups().find((lineup) => lineup.id === id) || null;
+    return offlineLineups?.find((lineup) => lineup.id === id) || localMatch || null;
   }
 
   // Try Supabase first
@@ -611,7 +615,9 @@ export async function getLineupById(id) {
       if (error) {
         console.error('Supabase getLineupById error:', error.message);
       } else if (data) {
-        return toCamelCaseLineup(data);
+        const lineup = toCamelCaseLineup(data);
+        saveLocalLineup(lineup);
+        return lineup;
       }
     } catch (err) {
       console.error('Supabase getLineupById failed:', err);
@@ -619,7 +625,7 @@ export async function getLineupById(id) {
   }
   
   // Fallback to localStorage
-  return getLocalLineups().find((lineup) => lineup.id === id) || null;
+  return localMatch || null;
 }
 
 export async function saveLineup(lineup) {
@@ -679,10 +685,14 @@ export async function saveLineup(lineup) {
         throw new Error(result.error.message);
       } else if (result.data) {
         console.log("Saved lineup result:", result.data);
+        const savedLineup = toCamelCaseLineup(result.data);
         if (!existing && result.data.id) {
           markLineupCreatedLocally(result.data.id);
+          sendLineupPushNotification(savedLineup).catch((error) => {
+            console.error('[LineupNotifications] failed to send web push notification:', error);
+          });
         }
-        return toCamelCaseLineup(result.data);
+        return savedLineup;
       }
     } catch (err) {
       console.error("Save lineup error:", err);
