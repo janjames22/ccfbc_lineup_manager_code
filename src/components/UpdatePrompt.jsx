@@ -15,10 +15,10 @@ export default function UpdatePrompt({ onUpdate, onDismiss }) {
           <div className="flex-1 min-w-0">
             <h3 className="flex items-center gap-2 text-base font-black text-white tracking-tight">
               <Sparkles size={14} className="text-blue-400" />
-              New update available
+              New version available
             </h3>
             <p className="truncate text-xs font-medium text-slate-400">
-              Fresh features and improvements are ready.
+              Tap to update and load the latest Line Up Manager build.
             </p>
           </div>
 

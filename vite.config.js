@@ -3,11 +3,21 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const BUILD_VERSION =
+  globalThis.process?.env?.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) ||
+  new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+
 export default defineConfig({
+  define: {
+    __APP_BUILD_VERSION__: JSON.stringify(BUILD_VERSION),
+  },
   plugins: [
     react(),
     tailwindcss(),
     VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
       registerType: 'prompt',
       includeAssets: ['logo.png', 'favicon.png', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png'],
       manifest: {
@@ -38,10 +48,8 @@ export default defineConfig({
           }
         ]
       },
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        cleanupOutdatedCaches: true,
-        clientsClaim: true,
       },
       devOptions: {
         enabled: true,

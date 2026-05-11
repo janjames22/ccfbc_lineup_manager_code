@@ -23,10 +23,14 @@ import ShareAppQrModal from './components/ShareAppQrModal';
 const UPDATE_CHECK_TIMEOUT_MS = 5000;
 const FOREGROUND_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const UPDATE_ACTIVATION_TIMEOUT_MS = 4000;
-const IS_DEV = import.meta.env.DEV;
 const UPDATE_RELOAD_MARKER_KEY = 'pwa-update-reload-reason';
-function devLog(...args) {
-  if (IS_DEV) console.log(...args);
+function logPwa(message, details) {
+  if (typeof details === 'undefined') {
+    console.log(`[PWA] ${message}`);
+    return;
+  }
+
+  console.log(`[PWA] ${message}`, details);
 }
 
 export default function App() {
@@ -50,7 +54,7 @@ export default function App() {
   const markWaitingWorkerAvailable = () => {
     setManualNeedUpdate(true);
     if (!waitingWorkerLoggedRef.current) {
-      devLog('waiting worker available');
+      logPwa('new service worker waiting');
       waitingWorkerLoggedRef.current = true;
     }
   };
@@ -61,7 +65,7 @@ export default function App() {
 
     worker.addEventListener('statechange', () => {
       if (worker.state === 'installed') {
-        devLog('new worker installed');
+        logPwa('update found', { state: worker.state });
         if (registration.waiting) markWaitingWorkerAvailable();
       }
     });
@@ -71,18 +75,18 @@ export default function App() {
     onRegisteredSW(swUrl, registration) {
       registrationRef.current = registration;
       setSwRegistration(registration || null);
-      devLog('service worker registered', { swUrl, scope: registration?.scope });
+      logPwa('service worker registered', { swUrl, scope: registration?.scope });
 
       if (!registration) return;
       if (registration.waiting) markWaitingWorkerAvailable();
       attachWorkerLifecycleLogs(registration, registration.installing);
 
       registration.addEventListener('updatefound', () => {
-        devLog('update found');
+        logPwa('update found');
         attachWorkerLifecycleLogs(registration, registration.installing);
       });
     },
-    onRegisterError(error) { console.error('SW registration error', error); },
+    onRegisterError(error) { console.error('[PWA] SW registration error', error); },
   });
 
   // Safe destructuring with type guards
@@ -103,16 +107,15 @@ export default function App() {
     if (!needUpdate) return;
     setManualNeedUpdate(true);
     if (!waitingWorkerLoggedRef.current) {
-      devLog('waiting worker available');
+      logPwa('new service worker waiting');
       waitingWorkerLoggedRef.current = true;
     }
   }, [needUpdate]);
 
   useEffect(() => {
-    if (!IS_DEV) return undefined;
     const reloadReason = sessionStorage.getItem(UPDATE_RELOAD_MARKER_KEY);
     if (reloadReason) {
-      devLog('page reloaded', { reason: reloadReason });
+      logPwa('page reloaded with latest bundle', { reason: reloadReason });
       sessionStorage.removeItem(UPDATE_RELOAD_MARKER_KEY);
     }
     return undefined;
@@ -121,7 +124,7 @@ export default function App() {
   const reloadAppForUpdate = (reason) => {
     if (reloadTriggeredRef.current) return;
     reloadTriggeredRef.current = true;
-    if (IS_DEV) devLog('page reloaded', { reason });
+    logPwa('page reloaded with latest bundle', { reason });
     sessionStorage.setItem(UPDATE_RELOAD_MARKER_KEY, reason);
     window.location.reload();
   };
@@ -137,7 +140,7 @@ export default function App() {
       if (now - lastUpdateCheckAtRef.current < FOREGROUND_UPDATE_CHECK_INTERVAL_MS) return;
       lastUpdateCheckAtRef.current = now;
       swRegistration.update().catch((error) => {
-        if (IS_DEV) console.error('service worker update check failed', error);
+        console.error('[PWA] service worker update check failed', error);
       });
     };
 
@@ -179,7 +182,7 @@ export default function App() {
     };
 
     const handleUpdateFound = () => {
-      devLog('update found');
+      logPwa('update found');
       attachWorkerLifecycleLogs(registration, registration.installing);
       registration.installing?.addEventListener('statechange', handleStateChange);
     };
@@ -229,23 +232,23 @@ export default function App() {
   };
 
   const handleAcceptUpdate = () => {
-    devLog('update button clicked');
+    logPwa('activating new service worker');
 
     const registration = registrationRef.current;
     const waitingWorker = registration?.waiting;
 
     if (!waitingWorker) {
-      devLog('waiting service worker found', false);
+      logPwa('new service worker waiting', false);
       showToast('No update is waiting right now. Please check again.', 'info');
       closeUpdatePrompt();
       return;
     }
 
-    devLog('waiting service worker found', true);
+    logPwa('new service worker waiting', true);
     closeUpdatePrompt();
 
     const handleControllerChange = () => {
-      devLog('controller changed');
+      logPwa('page controller changed');
       window.clearTimeout(fallbackTimer);
       navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
       reloadAppForUpdate('controllerchange');
@@ -260,7 +263,7 @@ export default function App() {
 
     try {
       waitingWorker.postMessage({ type: 'SKIP_WAITING' });
-      devLog('SKIP_WAITING sent');
+      logPwa('SKIP_WAITING sent');
     } catch (error) {
       console.error('Failed to message waiting service worker:', error);
       window.clearTimeout(fallbackTimer);
