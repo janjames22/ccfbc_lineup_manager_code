@@ -1,13 +1,20 @@
 import { BookOpen, CalendarDays, Home, Plus, QrCode } from 'lucide-react';
 import { NavLink, Link } from 'react-router-dom';
 import OfflineStatusBadge from './OfflineStatusBadge';
+import NotificationBell from './NotificationBell';
 
 const navLink = ({ isActive }) =>
   `inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold transition-all duration-200 ${
     isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
   }`;
 
-export default function Navbar({ onShareApp }) {
+export default function Navbar({
+  onShareApp,
+  notifications = [],
+  unreadNotificationCount = 0,
+  onMarkNotificationsRead,
+  onClearNotification,
+}) {
   return (
     <header className="border-b border-slate-800/50 bg-slate-900/95 backdrop-blur-md sticky top-0 z-40 print:hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       <div className="mx-auto flex w-full max-w-7xl min-w-0 flex-col gap-3 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
@@ -22,6 +29,12 @@ export default function Navbar({ onShareApp }) {
         </Link>
         <nav className="hidden items-center gap-2 lg:flex">
           <OfflineStatusBadge />
+          <NotificationBell
+            notifications={notifications}
+            unreadCount={unreadNotificationCount}
+            onMarkAllRead={onMarkNotificationsRead}
+            onClearNotification={onClearNotification}
+          />
           <NavLink to="/" className={navLink}>
             <Home size={16} aria-hidden="true" /> Dashboard
           </NavLink>
@@ -40,6 +53,12 @@ export default function Navbar({ onShareApp }) {
         </nav>
         <div className="flex flex-wrap items-center gap-2 lg:hidden">
           <OfflineStatusBadge />
+          <NotificationBell
+            notifications={notifications}
+            unreadCount={unreadNotificationCount}
+            onMarkAllRead={onMarkNotificationsRead}
+            onClearNotification={onClearNotification}
+          />
           <button className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-sm font-bold text-slate-200" type="button" onClick={onShareApp}>
             <QrCode size={16} aria-hidden="true" /> Install QR
           </button>

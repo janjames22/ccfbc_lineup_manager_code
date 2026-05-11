@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import InstallBanner from './components/InstallBanner';
@@ -18,6 +18,13 @@ import BottomNav from './components/BottomNav';
 import ToastContainer from './components/ToastContainer';
 import { useToast } from './hooks/useToast';
 import ShareAppQrModal from './components/ShareAppQrModal';
+import { supabase, isSupabaseConfigured } from './utils/supabase';
+import {
+  consumeLocalLineupCreation,
+  createLineupNotification,
+  readStoredLineupNotifications,
+  storeLineupNotifications,
+} from './utils/lineupNotifications';
 
 const UPDATE_CHECK_TIMEOUT_MS = 5000;
 const FOREGROUND_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
@@ -39,6 +46,7 @@ export default function App() {
   const [manualNeedUpdate, setManualNeedUpdate] = useState(false);
   const [checkingForUpdate, setCheckingForUpdate] = useState(false);
   const [shareQrOpen, setShareQrOpen] = useState(false);
+  const [lineupNotifications, setLineupNotifications] = useState(readStoredLineupNotifications);
   const { showToast } = useToast();
 
   const markWaitingWorkerAvailable = () => {
@@ -92,6 +100,23 @@ export default function App() {
   const isLyricsMonitorRoute = /^\/lyrics-monitor\/[^/]+$/.test(location.pathname) || /^\/lineups\/[^/]+\/monitor$/.test(location.pathname);
   const isPrintRoute = /^\/lineups\/[^/]+\/print$/.test(location.pathname);
   const showAppChrome = !isLyricsMonitorRoute && !isPrintRoute;
+  const unreadLineupNotifications = lineupNotifications.filter((notification) => !notification.read).length;
+
+  const updateLineupNotifications = useCallback((updater) => {
+    setLineupNotifications((current) => {
+      const next = typeof updater === 'function' ? updater(current) : updater;
+      storeLineupNotifications(next);
+      return next;
+    });
+  }, []);
+
+  const markLineupNotificationsRead = useCallback(() => {
+    updateLineupNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
+  }, [updateLineupNotifications]);
+
+  const clearLineupNotification = useCallback((notificationId) => {
+    updateLineupNotifications((current) => current.filter((notification) => notification.id !== notificationId));
+  }, [updateLineupNotifications]);
 
   useEffect(() => {
     if (!needUpdate) return;
@@ -111,6 +136,43 @@ export default function App() {
     }
     return undefined;
   }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      devLog('Lineup notifications disabled: Supabase is not configured.');
+      return undefined;
+    }
+
+    const channel = supabase
+      .channel('lineup-notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'lineups',
+        },
+        (payload) => {
+          console.log('New lineup added:', payload.new);
+
+          if (consumeLocalLineupCreation(payload.new)) return;
+
+          const notification = createLineupNotification(payload.new);
+          updateLineupNotifications((current) => {
+            if (current.some((item) => item.lineupId === notification.lineupId)) return current;
+            return [notification, ...current];
+          });
+          showToast(notification.message, 'info', 6000);
+        }
+      )
+      .subscribe((status) => {
+        console.log('Lineup notification channel status:', status);
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [showToast, updateLineupNotifications]);
 
   const reloadAppForUpdate = (reason) => {
     if (reloadTriggeredRef.current) return;
@@ -272,7 +334,15 @@ export default function App() {
 
   return (
     <div className={`min-h-dvh w-full max-w-full overflow-x-hidden bg-slate-950 text-slate-100 selection:bg-blue-500/30 ${showAppChrome ? 'pb-24 lg:pb-0' : ''}`}>
-      {showAppChrome && <Navbar onShareApp={() => setShareQrOpen(true)} />}
+      {showAppChrome && (
+        <Navbar
+          onShareApp={() => setShareQrOpen(true)}
+          notifications={lineupNotifications}
+          unreadNotificationCount={unreadLineupNotifications}
+          onMarkNotificationsRead={markLineupNotificationsRead}
+          onClearNotification={clearLineupNotification}
+        />
+      )}
       {showAppChrome && <InstallBanner />}
       <ToastContainer />
       <ShareAppQrModal open={shareQrOpen} onClose={() => setShareQrOpen(false)} />

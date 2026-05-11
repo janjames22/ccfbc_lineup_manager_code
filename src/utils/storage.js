@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { emptyMusicians } from './constants';
 import { getOfflineSongs, saveSongsOffline, getOfflineLineups, saveLineupsOffline } from './offlineSync';
+import { markLineupCreatedLocally } from './lineupNotifications';
 
 const SONGS_KEY = 'worshipSongs';
 const LINEUPS_KEY = 'worshipLineups';
@@ -659,6 +660,7 @@ export async function saveLineup(lineup) {
         // Insert new
         const insertPayload = { ...payload };
         delete insertPayload.id;
+        markLineupCreatedLocally(insertPayload);
 
         result = await withTimeout(
           supabase
@@ -675,6 +677,9 @@ export async function saveLineup(lineup) {
         throw new Error(result.error.message);
       } else if (result.data) {
         console.log("Saved lineup result:", result.data);
+        if (!existing && result.data.id) {
+          markLineupCreatedLocally(result.data.id);
+        }
         return toCamelCaseLineup(result.data);
       }
     } catch (err) {
