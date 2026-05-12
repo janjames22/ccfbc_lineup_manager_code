@@ -16,6 +16,93 @@ const APP_SHELL_CACHE = `${CACHE_PREFIX}-app-shell-${BUILD_VERSION}`;
 const STATIC_ASSET_CACHE = `${CACHE_PREFIX}-assets-${BUILD_VERSION}`;
 const IMAGE_CACHE = `${CACHE_PREFIX}-images-${BUILD_VERSION}`;
 const CACHE_PREFIXES_TO_CLEAN = ['lineup-manager', 'workbox-precache', 'workbox-runtime'];
+const IS_DEV_HOST = ['localhost', '127.0.0.1', '[::1]'].includes(self.location.hostname);
+const IS_DEV_BUILD = BUILD_VERSION === 'dev' || IS_DEV_HOST;
+
+function debugPush(message, details) {
+  if (!IS_DEV_BUILD) return;
+  if (typeof details === 'undefined') {
+    console.log(`[PushNotifications] ${message}`);
+    return;
+  }
+  console.log(`[PushNotifications] ${message}`, details);
+}
+
+function readPushPayload(event) {
+  if (!event.data) return {};
+
+  try {
+    return event.data.json();
+  } catch (jsonError) {
+    try {
+      return { body: event.data.text() };
+    } catch (textError) {
+      console.warn('[PushNotifications] push payload could not be parsed', { jsonError, textError });
+      return {};
+    }
+  }
+}
+
+function getNotificationUrl(payload = {}) {
+  const fallbackUrl = payload.lineupId ? `/lineups/${payload.lineupId}` : '/lineups';
+  const rawUrl = payload.url || payload.data?.url || fallbackUrl;
+  return new URL(rawUrl, self.location.origin).href;
+}
+
+function createNotificationOptions(payload = {}) {
+  const lineupId = payload.lineupId || payload.lineup_id || payload.data?.lineupId || null;
+  const url = getNotificationUrl({ ...payload, lineupId });
+  const timestampValue = payload.timestamp ? Date.parse(payload.timestamp) : Date.now();
+  const timestamp = Number.isFinite(timestampValue) ? timestampValue : Date.now();
+
+  return {
+    body: payload.body || 'New notification',
+    icon: payload.icon || '/icon-192.png',
+    badge: payload.badge || '/icon-192.png',
+    tag: payload.tag || (lineupId ? `lineup-${lineupId}` : 'lineup-manager'),
+    timestamp,
+    renotify: payload.renotify !== false,
+    requireInteraction: payload.requireInteraction === true,
+    vibrate: [200, 100, 200],
+    data: {
+      ...(payload.data || {}),
+      url,
+      lineupId,
+      timestamp,
+    },
+  };
+}
+
+async function focusOrOpenNotificationUrl(urlToOpen, notificationData = {}) {
+  const targetUrl = new URL(urlToOpen, self.location.origin);
+  const clientList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+
+  for (const client of clientList) {
+    const clientUrl = new URL(client.url);
+    if (clientUrl.origin !== self.location.origin) continue;
+
+    let targetClient = client;
+    if ('navigate' in targetClient) {
+      targetClient = await targetClient.navigate(targetUrl.href) || targetClient;
+    }
+
+    if ('focus' in targetClient) {
+      await targetClient.focus();
+    }
+
+    targetClient.postMessage?.({
+      type: 'LINEUP_NOTIFICATION_CLICK',
+      lineupId: notificationData.lineupId || null,
+      url: `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`,
+    });
+
+    return;
+  }
+
+  if (clients.openWindow) {
+    await clients.openWindow(targetUrl.href);
+  }
+}
 
 setCacheNameDetails({
   prefix: CACHE_PREFIX,
@@ -71,55 +158,31 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let payload = {};
-
-  try {
-    payload = event.data ? event.data.json() : {};
-  } catch (error) {
-    console.warn('[PWA] push payload could not be parsed as JSON', error);
-  }
-
+  const payload = readPushPayload(event);
   const title = payload.title || 'Line Up Manager';
-  const url = payload.url || '/lineups';
-  const options = {
-    body: payload.body || 'New notification',
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
-    tag: payload.tag || (payload.lineupId ? `lineup-${payload.lineupId}` : 'lineup-manager'),
-    renotify: true,
-    data: {
-      url,
-      lineupId: payload.lineupId || null,
-    },
-  };
+  const options = createNotificationOptions(payload);
 
-  event.waitUntil(
-    self.registration.showNotification(title, options)
-  );
+  debugPush('push event received', { title, options });
+
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const urlToOpen = new URL(event.notification.data?.url || '/lineups', self.location.origin).href;
+  const notificationData = event.notification.data || {};
+  const urlToOpen = notificationData.url || '/lineups';
 
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if ('focus' in client) {
-          client.focus();
-          if ('navigate' in client) return client.navigate(urlToOpen);
-          return undefined;
-        }
-      }
+  debugPush('notification click URL', { url: urlToOpen, lineupId: notificationData.lineupId });
 
-      if (clients.openWindow) {
-        return clients.openWindow(urlToOpen);
-      }
+  event.waitUntil(focusOrOpenNotificationUrl(urlToOpen, notificationData));
+});
 
-      return undefined;
-    })
-  );
+self.addEventListener('notificationclose', (event) => {
+  debugPush('notification closed', {
+    tag: event.notification.tag,
+    lineupId: event.notification.data?.lineupId || null,
+  });
 });
 
 registerRoute(

@@ -12,13 +12,23 @@ Lineup notifications use two layers:
 Required environment variables:
 
 ```bash
-VITE_VAPID_PUBLIC_KEY=
+VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 VAPID_SUBJECT=mailto:your-admin@example.com
+SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 ```
 
-Keep `VAPID_PRIVATE_KEY` and `SUPABASE_SERVICE_ROLE_KEY` server-only. Do not expose them to the frontend.
+`VITE_VAPID_PUBLIC_KEY` is still supported for local builds, but the preferred production setup is `VAPID_PUBLIC_KEY` served by `/api/push/public-key`. Keep `VAPID_PRIVATE_KEY` and `SUPABASE_SERVICE_ROLE_KEY` server-only. Do not expose them to the frontend.
+
+Web Push routes:
+
+- `POST /api/push/subscribe`
+- `POST /api/push/unsubscribe`
+- `POST /api/push/send-test`
+- `POST /api/push/send-lineup`
+
+iPhone/iPad Web Push requires a supported iOS/iPadOS version and the PWA installed to the Home Screen. Web push cannot force a custom sound while the app is idle or the screen is locked; the OS notification sound settings control that behavior.
 
 ## Run
 

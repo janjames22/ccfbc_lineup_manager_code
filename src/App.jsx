@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import InstallBanner from './components/InstallBanner';
 import Dashboard from './pages/Dashboard';
@@ -36,6 +36,7 @@ function logPwa(message, details) {
 
 export default function App() {
   const location = useLocation();
+  const navigate = useNavigate();
   const registrationRef = useRef(null);
   const lastUpdateCheckAtRef = useRef(0);
   const waitingWorkerLoggedRef = useRef(false);
@@ -143,6 +144,27 @@ export default function App() {
       window.removeEventListener('keydown', unlockAudio);
     };
   }, []);
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return undefined;
+
+    const handleServiceWorkerMessage = (event) => {
+      if (event.data?.type !== 'LINEUP_NOTIFICATION_CLICK') return;
+
+      try {
+        const targetUrl = new URL(event.data.url || '/lineups', window.location.origin);
+        if (targetUrl.origin !== window.location.origin) return;
+        navigate(`${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`);
+      } catch (error) {
+        console.error('[PushNotifications] notification click message could not be handled:', error);
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
+    };
+  }, [navigate]);
 
   const reloadAppForUpdate = (reason) => {
     if (reloadTriggeredRef.current) return;

@@ -3,6 +3,17 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PhoneNotificationsButton from './PhoneNotificationsButton';
 
+const IS_DEV = import.meta.env.DEV;
+
+function debugNotificationBell(message, details) {
+  if (!IS_DEV) return;
+  if (typeof details === 'undefined') {
+    console.log(`[LineupNotifications] ${message}`);
+    return;
+  }
+  console.log(`[LineupNotifications] ${message}`, details);
+}
+
 export default function NotificationBell({
   notifications,
   unreadCount,
@@ -17,14 +28,14 @@ export default function NotificationBell({
   const navigate = useNavigate();
 
   useEffect(() => {
-    console.log('NotificationBell mounted in Navbar/App layout.');
+    debugNotificationBell('NotificationBell mounted in Navbar/App layout');
     return () => {
-      console.log('NotificationBell unmounted from Navbar/App layout.');
+      debugNotificationBell('NotificationBell unmounted from Navbar/App layout');
     };
   }, []);
 
   useEffect(() => {
-      console.log('NotificationBell render state:', {
+    debugNotificationBell('NotificationBell render state', {
       notificationCount: notifications.length,
       unreadCount,
       open,
@@ -44,8 +55,8 @@ export default function NotificationBell({
   }, [open]);
 
   const handleNotificationClick = (notification) => {
-    console.log('[LineupNotifications] notification row clicked');
-    console.log('[LineupNotifications] clicked notification:', notification);
+    debugNotificationBell('notification row clicked');
+    debugNotificationBell('clicked notification', notification);
 
     if (!notification?.lineupId) {
       console.warn('[LineupNotifications] notification click skipped because lineupId is missing.', notification);
@@ -53,8 +64,8 @@ export default function NotificationBell({
     }
 
     const targetUrl = `/lineups/${notification.lineupId}`;
-    console.log('[LineupNotifications] lineupId:', notification.lineupId);
-    console.log('[LineupNotifications] navigating to:', targetUrl);
+    debugNotificationBell('lineupId', notification.lineupId);
+    debugNotificationBell('navigating to', targetUrl);
 
     onMarkNotificationRead?.(notification.id);
     setOpen(false);

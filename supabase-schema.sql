@@ -49,9 +49,17 @@ CREATE TABLE IF NOT EXISTS public.push_subscriptions (
     p256dh TEXT NOT NULL,
     auth TEXT NOT NULL,
     user_agent TEXT,
+    device_label TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    last_seen_at TIMESTAMPTZ,
+    is_active BOOLEAN DEFAULT TRUE
 );
+
+ALTER TABLE public.push_subscriptions
+    ADD COLUMN IF NOT EXISTS device_label TEXT,
+    ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
 
 -- ============================================
 -- ROW LEVEL SECURITY
@@ -108,11 +116,19 @@ DROP POLICY IF EXISTS "Allow public push subscription update" ON public.push_sub
 
 CREATE POLICY "Allow public push subscription insert"
 ON public.push_subscriptions
-    FOR INSERT WITH CHECK (true);
+    FOR INSERT WITH CHECK (
+        endpoint IS NOT NULL
+        AND p256dh IS NOT NULL
+        AND auth IS NOT NULL
+    );
 
 CREATE POLICY "Allow public push subscription update"
 ON public.push_subscriptions
-    FOR UPDATE USING (true) WITH CHECK (true);
+    FOR UPDATE USING (true) WITH CHECK (
+        endpoint IS NOT NULL
+        AND p256dh IS NOT NULL
+        AND auth IS NOT NULL
+    );
 
 -- No public SELECT policy is added. Server/admin logic should send notifications
 -- with SUPABASE_SERVICE_ROLE_KEY, which bypasses RLS.
@@ -124,6 +140,7 @@ CREATE INDEX idx_songs_title ON songs(title);
 CREATE INDEX idx_songs_category ON songs(category);
 CREATE INDEX idx_lineups_date ON lineups(date);
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint ON public.push_subscriptions(endpoint);
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_active ON public.push_subscriptions(is_active);
 
 -- ============================================
 -- FUNCTION TO AUTO-UPDATE updated_at TIMESTAMP

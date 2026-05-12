@@ -12,6 +12,16 @@ import {
 import { playNotificationSound } from '../utils/notificationAudio';
 
 const LINEUP_NOTIFICATION_CHANNEL = 'lineup-notifications';
+const IS_DEV = import.meta.env.DEV;
+
+function debugLineupNotifications(message, details) {
+  if (!IS_DEV) return;
+  if (typeof details === 'undefined') {
+    console.log(`[LineupNotifications] ${message}`);
+    return;
+  }
+  console.log(`[LineupNotifications] ${message}`, details);
+}
 
 export default function useLineupNotifications() {
   const [notifications, setNotifications] = useState(readStoredLineupNotifications);
@@ -35,7 +45,7 @@ export default function useLineupNotifications() {
   const updateNotifications = useCallback((updater) => {
     setNotifications((current) => {
       const next = typeof updater === 'function' ? updater(current) : updater;
-      console.log('[LineupNotifications] notification list after update:', next);
+      debugLineupNotifications('notification list after update', next);
       storeLineupNotifications(next);
       notifiedLineupIdsRef.current = new Set(next.map((notification) => notification?.lineupId).filter(Boolean));
       return next;
@@ -61,7 +71,7 @@ export default function useLineupNotifications() {
   }, []);
 
   const handleNewLineup = useCallback((lineupRow, eventType = 'UNKNOWN') => {
-    console.log('[LineupNotifications] handleNewLineup called:', { eventType, lineupRow });
+    debugLineupNotifications('handleNewLineup called', { eventType, lineupRow });
 
     if (!lineupRow || typeof lineupRow !== 'object') {
       console.warn('[LineupNotifications] Skipping notification because lineup row is missing or invalid.');
@@ -69,7 +79,7 @@ export default function useLineupNotifications() {
     }
 
     if (consumeLocalLineupCreation(lineupRow)) {
-      console.log('[LineupNotifications] Skipping notification because this browser tab created the lineup:', lineupRow);
+      debugLineupNotifications('skipping notification because this browser tab created the lineup', lineupRow);
       return;
     }
 
@@ -80,18 +90,18 @@ export default function useLineupNotifications() {
     }
 
     if (notifiedLineupIdsRef.current.has(notification.lineupId)) {
-      console.log('[LineupNotifications] notification list update skipped because lineupId already exists:', notification.lineupId);
+      debugLineupNotifications('notification list update skipped because lineupId already exists', notification.lineupId);
       return;
     }
 
-    console.log('[LineupNotifications] created notification:', notification);
+    debugLineupNotifications('created notification', notification);
     notifiedLineupIdsRef.current.add(notification.lineupId);
 
     updateNotifications((current) => {
       return [notification, ...current];
     });
 
-    console.log('[LineupNotifications] triggering toast for notification:', notification.message);
+    debugLineupNotifications('triggering toast for notification', notification.message);
     showToastRef.current(notification.message, 'info', 6000);
 
     if (soundEnabledRef.current) {
@@ -102,7 +112,7 @@ export default function useLineupNotifications() {
   }, [updateNotifications]);
 
   useEffect(() => {
-    console.log('[LineupNotifications] Mounting subscription');
+    debugLineupNotifications('mounting subscription');
 
     if (!isSupabaseConfigured()) {
       console.warn('[LineupNotifications] Existing Supabase client is not configured. Subscription was not created.');
@@ -124,21 +134,21 @@ export default function useLineupNotifications() {
           table: 'lineups',
         },
         (payload) => {
-          console.log('[LineupNotifications] realtime event received:', payload);
-          console.log('[LineupNotifications] eventType:', payload.eventType);
-          console.log('[LineupNotifications] new row:', payload.new);
-          console.log('[LineupNotifications] old row:', payload.old);
+          debugLineupNotifications('realtime event received', payload);
+          debugLineupNotifications('eventType', payload.eventType);
+          debugLineupNotifications('new row', payload.new);
+          debugLineupNotifications('old row', payload.old);
 
           if (payload.eventType === 'INSERT') {
             handleNewLineup(payload.new, payload.eventType);
             return;
           }
 
-          console.log('[LineupNotifications] realtime event ignored because it is not INSERT.');
+          debugLineupNotifications('realtime event ignored because it is not INSERT');
         }
       )
       .subscribe((status) => {
-        console.log(`[LineupNotifications] subscription status: ${status}`);
+        debugLineupNotifications('subscription status', status);
 
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           console.error('[LineupNotifications] Realtime channel is not healthy. Check Supabase client env and Realtime delivery.', { status });
@@ -152,7 +162,7 @@ export default function useLineupNotifications() {
     channelRef.current = channel;
 
     return () => {
-      console.log('[LineupNotifications] Cleaning up subscription');
+      debugLineupNotifications('cleaning up subscription');
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;

@@ -9,6 +9,16 @@ const LINEUPS_KEY = 'worshipLineups';
 const SUPABASE_TIMEOUT_MS = 10000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DEFAULT_LYRICS_MONITOR_THEME = 'Dark Void';
+const IS_DEV = import.meta.env.DEV;
+
+function debugStorage(message, details) {
+  if (!IS_DEV) return;
+  if (typeof details === 'undefined') {
+    console.log(message);
+    return;
+  }
+  console.log(message, details);
+}
 
 const sampleSong = {
   id: 'song_sample_001',
@@ -653,7 +663,7 @@ export async function saveLineup(lineup) {
       let result;
       if (existing && hasSupabaseId) {
         // Update existing
-        console.log('[LineupNotifications] saveLineup is performing Supabase UPDATE for lineup id:', nextLineup.id);
+        debugStorage('[LineupNotifications] saveLineup is performing Supabase UPDATE for lineup id:', nextLineup.id);
         result = await withTimeout(
           supabase
             .from('lineups')
@@ -668,7 +678,7 @@ export async function saveLineup(lineup) {
         const insertPayload = { ...payload };
         delete insertPayload.id;
         markLineupCreatedLocally(insertPayload);
-        console.log('[LineupNotifications] saveLineup is performing Supabase INSERT for lineup payload:', insertPayload);
+        debugStorage('[LineupNotifications] saveLineup is performing Supabase INSERT for lineup payload:', insertPayload);
 
         result = await withTimeout(
           supabase
@@ -684,7 +694,7 @@ export async function saveLineup(lineup) {
         console.error("Save lineup error:", result.error);
         throw new Error(result.error.message);
       } else if (result.data) {
-        console.log("Saved lineup result:", result.data);
+        debugStorage("Saved lineup result:", result.data);
         const savedLineup = toCamelCaseLineup(result.data);
         if (!existing && result.data.id) {
           markLineupCreatedLocally(result.data.id);
@@ -701,7 +711,7 @@ export async function saveLineup(lineup) {
   }
   
   // Fallback to localStorage
-  console.log('[LineupNotifications] saveLineup is using localStorage fallback because Supabase is not configured.');
+  debugStorage('[LineupNotifications] saveLineup is using localStorage fallback because Supabase is not configured.');
   return saveLocalLineup(nextLineup);
 }
 

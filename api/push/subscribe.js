@@ -1,10 +1,11 @@
 import {
   allowMethods,
+  debugPushServer,
   getRequestBody,
   getSupabaseAdmin,
   normalizeSubscription,
   upsertPushSubscription,
-} from './_push.js';
+} from '../_push.js';
 
 export default async function handler(request, response) {
   if (!allowMethods(request, response, ['POST'])) return;
@@ -23,6 +24,7 @@ export default async function handler(request, response) {
 
   try {
     const saved = await upsertPushSubscription(supabase, subscription);
+    debugPushServer('subscription saved to Supabase', { endpoint: saved.endpoint });
     response.status(200).json({ ok: true, endpoint: saved.endpoint });
   } catch (error) {
     console.error('[PushNotifications] failed to save push subscription:', error);

@@ -6,6 +6,7 @@ import {
 const NOTIFICATION_SOUND_SRC = '/sounds/notification.wav';
 const NOTIFICATION_SOUND_VOLUME = 0.7;
 const NOTIFICATION_SOUND_THROTTLE_MS = 1500;
+const IS_DEV = import.meta.env.DEV;
 
 let notificationAudio = null;
 let audioUnlocked = false;
@@ -34,7 +35,7 @@ export function unlockNotificationAudio() {
       audio.currentTime = 0;
       audio.muted = false;
       audioUnlocked = true;
-      console.log('[LineupNotifications] audio unlocked');
+      if (IS_DEV) console.log('[LineupNotifications] audio unlocked');
     })
     .catch((error) => {
       audio.muted = false;
@@ -55,7 +56,7 @@ export async function playNotificationSound() {
   try {
     audio.currentTime = 0;
     await audio.play();
-    console.log('[LineupNotifications] notification sound played');
+    if (IS_DEV) console.log('[LineupNotifications] notification sound played');
   } catch (error) {
     console.warn('[LineupNotifications] notification sound blocked:', error);
   }
