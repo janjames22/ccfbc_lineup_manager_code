@@ -32,7 +32,7 @@ export default async function handler(request, response) {
 
   let { data, error } = await supabase
     .from('push_subscriptions')
-    .select('endpoint,is_active,last_seen_at,updated_at,device_id')
+    .select('endpoint,is_active,last_seen_at,updated_at,device_id,platform,user_agent')
     .eq('endpoint', endpoint)
     .maybeSingle();
 
@@ -63,6 +63,8 @@ export default async function handler(request, response) {
     active: Boolean(data?.endpoint) && data?.is_active !== false,
     endpoint: data?.endpoint || endpoint,
     deviceId: data?.device_id || '',
+    platform: data?.platform || '',
+    userAgentSaved: Boolean(data?.user_agent),
     lastSeenAt: data?.last_seen_at || null,
     updatedAt: data?.updated_at || null,
   });

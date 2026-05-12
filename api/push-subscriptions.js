@@ -30,7 +30,14 @@ export default async function handler(request, response) {
 
   try {
     const saved = await upsertPushSubscription(supabase, subscription, { selectResult: Boolean(supabaseAdmin) });
-    response.status(200).json({ ok: true, endpoint: saved.endpoint, verified: Boolean(supabaseAdmin) });
+    response.status(200).json({
+      ok: true,
+      endpoint: saved.endpoint,
+      deviceId: subscription.device_id,
+      platform: subscription.platform,
+      userAgentSaved: Boolean(subscription.user_agent),
+      verified: Boolean(supabaseAdmin),
+    });
   } catch (error) {
     console.error('[PushNotifications] failed to save push subscription:', error);
     if (MISSING_COLUMN_CODES.has(error.code)) {

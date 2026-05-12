@@ -2,7 +2,8 @@
 import { getMetadata, NOTIFICATION_METADATA_KEYS } from './indexedDbNotifications';
 
 const PUSH_SUBSCRIPTION_ENDPOINT_KEY = 'lineupManagerPushSubscriptionEndpoint';
-const PUSH_DEVICE_ID_KEY = 'lineupManagerPushDeviceId';
+const LEGACY_PUSH_DEVICE_ID_KEY = 'lineupManagerPushDeviceId';
+const PUSH_DEVICE_ID_KEY = 'ccfbc_device_id';
 const STABLE_PRODUCTION_HOST = 'ccfbc-lineup-manager-code.vercel.app';
 const API_BASE = '/api/push';
 const IS_DEV = import.meta.env.DEV;
@@ -85,6 +86,13 @@ export function getPushDeviceId() {
   if (existing) {
     debugPush('device_id loaded from localStorage', { deviceId: existing });
     return existing;
+  }
+
+  const legacyDeviceId = window.localStorage.getItem(LEGACY_PUSH_DEVICE_ID_KEY);
+  if (legacyDeviceId) {
+    window.localStorage.setItem(PUSH_DEVICE_ID_KEY, legacyDeviceId);
+    debugPush('device_id migrated to ccfbc_device_id', { deviceId: legacyDeviceId });
+    return legacyDeviceId;
   }
 
   const deviceId = createDeviceId();
@@ -462,6 +470,29 @@ export async function sendTestPushNotification() {
   }
 
   debugPush('backend push send result', result);
+  return result;
+}
+
+export async function sendTestPushNotificationToAllDevices() {
+  const result = await fetchJson(
+    `${API_BASE}/send-test`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Line Up Manager',
+        body: 'Test phone notification for all subscribed devices',
+        url: '/lineups',
+      }),
+    },
+    'Unable to send test notification to all devices.'
+  );
+
+  if ((result.total || 0) < 1) {
+    throw new Error('No active push subscriptions were found.');
+  }
+
+  debugPush('backend push send-all result', result);
   return result;
 }
 

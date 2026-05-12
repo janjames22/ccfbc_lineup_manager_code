@@ -7,6 +7,7 @@ import {
   resubscribeToLineupPushNotifications,
   sendLocalDiagnosticNotification,
   sendTestPushNotification,
+  sendTestPushNotificationToAllDevices,
   subscribeToLineupPushNotifications,
   unsubscribeFromLineupPushNotifications,
 } from '../utils/pushNotifications';
@@ -44,6 +45,7 @@ export default function PhoneNotificationsButton() {
   const [diagnostics, setDiagnostics] = useState(null);
   const [busy, setBusy] = useState(false);
   const [testBusy, setTestBusy] = useState(false);
+  const [allTestBusy, setAllTestBusy] = useState(false);
   const [diagnosticBusy, setDiagnosticBusy] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -155,6 +157,22 @@ export default function PhoneNotificationsButton() {
     }
   };
 
+  const handleSendAllTest = async () => {
+    setAllTestBusy(true);
+    setMessage('');
+
+    try {
+      const result = await sendTestPushNotificationToAllDevices();
+      await refreshDiagnostics();
+      setMessage(`All-device test attempted ${result.total || 0} subscription${result.total === 1 ? '' : 's'}: ${result.sent || 0} sent, ${result.failed || 0} failed, ${result.expired || 0} expired. Delivery logs: ${result.deliveryLogs || 0}.`);
+    } catch (error) {
+      console.error('[PushNotifications] failed to send all-device test notification:', error);
+      setMessage(error?.message || 'Unable to send test notification to all devices.');
+    } finally {
+      setAllTestBusy(false);
+    }
+  };
+
   const handleCheckSetup = async () => {
     setDiagnosticBusy(true);
     setMessage('');
@@ -235,7 +253,7 @@ export default function PhoneNotificationsButton() {
         disabled={testBusy || !enabled}
       >
         <Send size={14} aria-hidden="true" />
-        {testBusy ? 'Sending test...' : 'Send test notification'}
+        {testBusy ? 'Sending test...' : 'Send test to this device'}
       </button>
 
       <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
@@ -301,6 +319,15 @@ export default function PhoneNotificationsButton() {
           >
             <RefreshCw size={14} aria-hidden="true" />
             Resubscribe This Device
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 transition-colors hover:border-blue-500/60 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={handleSendAllTest}
+            disabled={allTestBusy}
+          >
+            <Send size={14} aria-hidden="true" />
+            {allTestBusy ? 'Sending to all...' : 'Send Test to All Devices'}
           </button>
           <button
             type="button"

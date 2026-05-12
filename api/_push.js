@@ -178,28 +178,14 @@ export async function upsertPushSubscription(supabase, subscription, { selectRes
 
   if (!result.error) return result.data || { endpoint: subscription.endpoint };
 
-  if (!MISSING_COLUMN_CODES.has(result.error.code)) {
-    throw result.error;
+  if (MISSING_COLUMN_CODES.has(result.error.code)) {
+    const schemaError = new Error('push_subscriptions table is missing metadata columns. Apply supabase-schema.sql, then resubscribe this device.');
+    schemaError.code = result.error.code;
+    schemaError.cause = result.error;
+    throw schemaError;
   }
 
-  const fallbackRecord = {
-    endpoint: record.endpoint,
-    p256dh: record.p256dh,
-    auth: record.auth,
-    user_agent: record.user_agent,
-    updated_at: record.updated_at,
-  };
-
-  const fallbackQuery = supabase
-    .from('push_subscriptions')
-    .upsert(fallbackRecord, { onConflict: 'endpoint' });
-
-  const fallbackResult = selectResult
-    ? await fallbackQuery.select('endpoint').single()
-    : await fallbackQuery;
-
-  if (fallbackResult.error) throw fallbackResult.error;
-  return fallbackResult.data || { endpoint: subscription.endpoint };
+  throw result.error;
 }
 
 export async function deletePushSubscription(supabase, endpoint) {
@@ -261,7 +247,7 @@ export async function markExpiredSubscriptions(supabase, endpoints) {
 export async function loadPushSubscriptions(supabase, { excludeEndpoint = '', targetEndpoint = '' } = {}) {
   let query = supabase
     .from('push_subscriptions')
-    .select('endpoint,p256dh,auth,is_active');
+    .select('endpoint,p256dh,auth,is_active,device_id,platform');
 
   if (targetEndpoint) {
     query = query.eq('endpoint', targetEndpoint);
@@ -384,6 +370,66 @@ export async function createLineupNotificationRecords(supabase, payload, subscri
   return 1;
 }
 
+function getPushResultStatus(result) {
+  if (result.status === 'fulfilled') return 'sent';
+  const statusCode = result.reason?.statusCode;
+  if (statusCode === 404 || statusCode === 410) return 'expired';
+  return 'failed';
+}
+
+function getPushResultHttpStatus(result) {
+  if (result.status === 'fulfilled') {
+    return Number(result.value?.statusCode) || 201;
+  }
+
+  return Number(result.reason?.statusCode) || null;
+}
+
+function getPushResultErrorMessage(result) {
+  if (result.status === 'fulfilled') return null;
+  return result.reason?.body
+    || result.reason?.message
+    || result.reason?.toString?.()
+    || 'Push delivery failed.';
+}
+
+export async function createPushDeliveryLogRecords(supabase, payload, subscriptions, results) {
+  if (!supabase || !subscriptions.length) return 0;
+
+  const notification = parsePushPayload(payload);
+  const records = subscriptions.map((subscription, index) => {
+    const result = results[index] || { status: 'rejected', reason: new Error('Missing push delivery result.') };
+    return {
+      notification_id: UUID_PATTERN.test(String(notification.notificationId || notification.id || ''))
+        ? String(notification.notificationId || notification.id)
+        : null,
+      lineup_id: notification.lineupId || notification.lineup_id || null,
+      subscription_endpoint: subscription.endpoint || null,
+      device_id: subscription.device_id || null,
+      platform: subscription.platform || null,
+      status: getPushResultStatus(result),
+      http_status: getPushResultHttpStatus(result),
+      error_message: getPushResultErrorMessage(result),
+    };
+  });
+
+  const { error } = await supabase
+    .from('push_delivery_logs')
+    .insert(records);
+
+  if (error) {
+    if (MISSING_COLUMN_CODES.has(error.code)) {
+      console.error('[PushNotifications] push_delivery_logs table is not ready. Apply supabase-schema.sql to enable delivery diagnostics.', error);
+      return 0;
+    }
+
+    console.error('[PushNotifications] failed to create push delivery logs:', error);
+    return 0;
+  }
+
+  return records.length;
+}
+
 export async function loadLineup(supabase, lineupId) {
   const { data, error } = await supabase
     .from('lineups')
@@ -445,6 +491,10 @@ export async function sendPushPayloadToSubscriptions(supabase, payload, subscrip
     await markExpiredSubscriptions(supabase, expiredEndpoints);
   }
 
+  const deliveryLogs = supabase
+    ? await createPushDeliveryLogRecords(supabase, payload, subscriptions, results)
+    : 0;
+
   const notificationRecords = supabase
     ? await createLineupNotificationRecords(supabase, payload, subscriptions, results)
     : 0;
@@ -456,6 +506,7 @@ export async function sendPushPayloadToSubscriptions(supabase, payload, subscrip
     failed: results.filter((result) => result.status === 'rejected').length,
     expired: expiredEndpoints.length,
     notificationRecords,
+    deliveryLogs,
   };
 
   debugPushServer('backend push send result', summary);

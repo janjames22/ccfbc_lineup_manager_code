@@ -65,6 +65,11 @@ ALTER TABLE public.push_subscriptions
     ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
 
+ALTER TABLE public.push_subscriptions
+    ALTER COLUMN updated_at SET DEFAULT NOW(),
+    ALTER COLUMN last_seen_at SET DEFAULT NOW(),
+    ALTER COLUMN is_active SET DEFAULT TRUE;
+
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -155,12 +160,42 @@ BEGIN
 END $$;
 
 -- ============================================
+-- PUSH DELIVERY LOGS TABLE
+-- ============================================
+-- Server-managed audit log for every Web Push delivery attempt. This helps
+-- diagnose which subscribed devices were reached, expired, or rejected.
+CREATE TABLE IF NOT EXISTS public.push_delivery_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    notification_id UUID,
+    lineup_id TEXT,
+    subscription_endpoint TEXT,
+    device_id TEXT,
+    platform TEXT,
+    status TEXT NOT NULL,
+    http_status INTEGER,
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.push_delivery_logs
+    ADD COLUMN IF NOT EXISTS notification_id UUID,
+    ADD COLUMN IF NOT EXISTS lineup_id TEXT,
+    ADD COLUMN IF NOT EXISTS subscription_endpoint TEXT,
+    ADD COLUMN IF NOT EXISTS device_id TEXT,
+    ADD COLUMN IF NOT EXISTS platform TEXT,
+    ADD COLUMN IF NOT EXISTS status TEXT,
+    ADD COLUMN IF NOT EXISTS http_status INTEGER,
+    ADD COLUMN IF NOT EXISTS error_message TEXT,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+-- ============================================
 -- ROW LEVEL SECURITY
 -- ============================================
 ALTER TABLE songs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lineups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lineup_notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.push_delivery_logs ENABLE ROW LEVEL SECURITY;
 
 -- ============================================
 -- SONGS POLICIES
@@ -258,6 +293,16 @@ DROP POLICY IF EXISTS "Allow public update on lineup notifications" ON public.li
 -- read later without exposing the service role key to frontend code.
 
 -- ============================================
+-- PUSH DELIVERY LOG POLICIES
+-- ============================================
+DROP POLICY IF EXISTS "Allow public read on push delivery logs" ON public.push_delivery_logs;
+DROP POLICY IF EXISTS "Allow public insert on push delivery logs" ON public.push_delivery_logs;
+DROP POLICY IF EXISTS "Allow public update on push delivery logs" ON public.push_delivery_logs;
+
+-- No public policies are created for push_delivery_logs. Server/admin push
+-- senders using SUPABASE_SERVICE_ROLE_KEY write delivery diagnostics.
+
+-- ============================================
 -- INDEXES FOR PERFORMANCE
 -- ============================================
 CREATE INDEX idx_songs_title ON songs(title);
@@ -275,6 +320,12 @@ CREATE INDEX IF NOT EXISTS idx_lineup_notifications_created_at ON public.lineup_
 CREATE UNIQUE INDEX IF NOT EXISTS idx_lineup_notifications_unique_lineup_created
 ON public.lineup_notifications (type, lineup_id)
 WHERE type = 'lineup_created' AND lineup_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_push_delivery_logs_created_at
+ON public.push_delivery_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_push_delivery_logs_device_id
+ON public.push_delivery_logs (device_id);
+CREATE INDEX IF NOT EXISTS idx_push_delivery_logs_status
+ON public.push_delivery_logs (status);
 
 -- ============================================
 -- FUNCTION TO AUTO-UPDATE updated_at TIMESTAMP
