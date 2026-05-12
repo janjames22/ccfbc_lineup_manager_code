@@ -95,7 +95,7 @@ export default function PhoneNotificationsButton() {
     try {
       const result = await subscribeToLineupPushNotifications();
       await refreshDiagnostics({ ensureRegistration: true, refreshServer: true });
-      setMessage(result?.message || 'Phone notifications enabled for this device.');
+      setMessage(result?.message || 'This device is subscribed.');
     } catch (error) {
       console.error('[PushNotifications] failed to enable phone notifications:', error);
       await refreshHealth().catch(() => setStatus(getPushSupportStatus()));
@@ -267,7 +267,12 @@ export default function PhoneNotificationsButton() {
           <DiagnosticRow label="Service worker active" value={serviceWorkerStatus?.active} tone={serviceWorkerStatus?.active ? 'good' : 'warn'} />
           <DiagnosticRow label="Push supported" value={status.hasPushManager} tone={status.hasPushManager ? 'good' : 'warn'} />
           <DiagnosticRow label="Browser subscription" value={formatEndpoint(subscriptionStatus?.endpoint)} tone={subscriptionStatus?.exists ? 'good' : 'warn'} />
-          <DiagnosticRow label="Saved in Supabase" value={subscriptionStatus?.savedInSupabase} tone={subscriptionStatus?.savedInSupabase ? 'good' : 'warn'} />
+          <DiagnosticRow
+            label="Saved in Supabase"
+            value={subscriptionStatus?.saveCheckUnavailable ? 'Cannot verify' : subscriptionStatus?.savedInSupabase}
+            tone={subscriptionStatus?.savedInSupabase ? 'good' : 'warn'}
+          />
+          <DiagnosticRow label="Device ID" value={app?.deviceId} />
           <DiagnosticRow label="Last subscription sync" value={metadata?.lastSubscriptionSyncAt} />
           <DiagnosticRow label="Last push received" value={metadata?.lastPushReceivedAt} />
           <DiagnosticRow label="App version" value={app?.version} />

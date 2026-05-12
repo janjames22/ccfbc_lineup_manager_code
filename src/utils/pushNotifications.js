@@ -61,6 +61,12 @@ function getDeviceLabel() {
   return `${platform} ${browser}`;
 }
 
+function getPushPlatform() {
+  if (isIosDevice()) return 'ios';
+  if (isAndroidDevice()) return 'android';
+  return 'web';
+}
+
 function createDeviceId() {
   const cryptoObject = typeof crypto !== 'undefined' ? crypto : null;
   if (cryptoObject?.randomUUID) return cryptoObject.randomUUID();
@@ -76,24 +82,44 @@ function createDeviceId() {
 export function getPushDeviceId() {
   if (typeof window === 'undefined') return '';
   const existing = window.localStorage.getItem(PUSH_DEVICE_ID_KEY);
-  if (existing) return existing;
+  if (existing) {
+    debugPush('device_id loaded from localStorage', { deviceId: existing });
+    return existing;
+  }
 
   const deviceId = createDeviceId();
   window.localStorage.setItem(PUSH_DEVICE_ID_KEY, deviceId);
+  debugPush('device_id generated', { deviceId });
   return deviceId;
 }
 
 async function readJsonResponse(response, fallbackMessage) {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
+    debugPush('API error response', {
+      status: response.status,
+      statusText: response.statusText,
+      error: body.error,
+    });
+    if (response.status === 404) {
+      throw new Error('API route missing. Check that /api/push/subscribe is deployed.');
+    }
     throw new Error(body.error || fallbackMessage);
   }
   return body;
 }
 
 async function fetchJson(url, options, fallbackMessage) {
-  const response = await fetch(url, options);
-  return readJsonResponse(response, fallbackMessage);
+  try {
+    const response = await fetch(url, options);
+    return readJsonResponse(response, fallbackMessage);
+  } catch (error) {
+    debugPush('API request failed', { url, error: error?.message || error });
+    if (error instanceof TypeError) {
+      throw new Error('API route unavailable. Check your network connection and deployed API routes.');
+    }
+    throw error;
+  }
 }
 
 async function getApplicationServerKey() {
@@ -117,6 +143,7 @@ async function getServiceWorkerRegistration({ ensure = false } = {}) {
   if (!('serviceWorker' in navigator)) return null;
 
   if (ensure) {
+    debugPush('registering service worker', { scope: '/' });
     const registered = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
     debugPush('service worker registered', { scope: registered.scope });
     const ready = await navigator.serviceWorker.ready;
@@ -130,16 +157,31 @@ async function getServiceWorkerRegistration({ ensure = false } = {}) {
 
 async function saveSubscriptionToServer(subscription) {
   const json = subscription.toJSON();
+  const endpoint = json.endpoint || '';
+  const p256dh = json.keys?.p256dh || '';
+  const auth = json.keys?.auth || '';
+  const deviceId = getPushDeviceId();
   const payload = {
     subscription: json,
+    endpoint,
+    p256dh,
+    auth,
     userAgent: navigator.userAgent || '',
     deviceLabel: getDeviceLabel(),
-    deviceId: getPushDeviceId(),
+    deviceId,
+    platform: getPushPlatform(),
   };
 
-  if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
+  if (!endpoint || !p256dh || !auth) {
     throw new Error('Browser did not return a complete push subscription.');
   }
+
+  debugPush('saving subscription through API', {
+    endpoint,
+    deviceId,
+    hasP256dh: Boolean(p256dh),
+    hasAuth: Boolean(auth),
+  });
 
   const result = await fetchJson(
     `${API_BASE}/subscribe`,
@@ -151,8 +193,8 @@ async function saveSubscriptionToServer(subscription) {
     'Unable to save push subscription.'
   );
 
-  debugPush('subscription saved to Supabase', { endpoint: result.endpoint });
-  storePushSubscriptionEndpoint(json.endpoint);
+  debugPush('API save response', result);
+  storePushSubscriptionEndpoint(endpoint);
   return result;
 }
 
@@ -282,7 +324,7 @@ export async function checkLineupPushSubscriptionHealth({ refreshServer = false,
   return {
     ok: true,
     code: 'ok',
-    message: 'Phone notifications enabled for this device.',
+    message: 'This device is subscribed.',
     support,
     registration,
     subscription,
@@ -292,6 +334,12 @@ export async function checkLineupPushSubscriptionHealth({ refreshServer = false,
 
 export async function subscribeToLineupPushNotifications({ forceNew = false } = {}) {
   const support = getPushSupportStatus();
+  debugPush('Enable Notifications tapped', {
+    notificationPermission: support.permission,
+    serviceWorkerSupported: support.hasServiceWorker,
+    pushManagerSupported: support.hasPushManager,
+  });
+
   if (!support.supported) {
     throw new Error(support.reason);
   }
@@ -303,18 +351,25 @@ export async function subscribeToLineupPushNotifications({ forceNew = false } = 
   const permission = support.permission === 'granted'
     ? 'granted'
     : await Notification.requestPermission();
+  debugPush('notification permission result', { permission });
 
   if (permission !== 'granted') {
-    throw new Error(permission === 'denied' ? 'Permission denied.' : 'Permission was not granted.');
+    throw new Error(permission === 'denied' ? 'Notification permission denied.' : 'Notification permission was not granted.');
   }
 
-  const publicKey = await getApplicationServerKey();
   const registration = await getServiceWorkerRegistration({ ensure: true });
+  debugPush('service worker registration status', {
+    active: Boolean(registration?.active),
+    waiting: Boolean(registration?.waiting),
+    installing: Boolean(registration?.installing),
+    scope: registration?.scope || '',
+  });
 
   if (!registration?.active) {
     throw new Error('Service worker not active yet. Reload the app, then try again.');
   }
 
+  const publicKey = await getApplicationServerKey();
   const existing = await registration.pushManager.getSubscription();
   if (existing && forceNew) {
     await fetchJson(
@@ -343,7 +398,7 @@ export async function subscribeToLineupPushNotifications({ forceNew = false } = 
   await saveSubscriptionToServer(subscription);
 
   return {
-    message: 'Phone notifications enabled for this device.',
+    message: 'This device is subscribed.',
     subscription,
   };
 }
@@ -392,6 +447,7 @@ export async function sendTestPushNotification() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        subscription: health.subscription.toJSON(),
         targetEndpoint: health.subscription.endpoint,
         title: 'Line Up Manager',
         body: 'Test phone notification',
@@ -517,6 +573,7 @@ export async function getNotificationDiagnostics({ refreshServer = false, ensure
       endpoint: subscription?.endpoint || '',
       savedInSupabase: Boolean(serverSubscription?.saved),
       activeInSupabase: Boolean(serverSubscription?.saved) && serverSubscription?.active !== false,
+      saveCheckUnavailable: Boolean(serverSubscription?.checkUnavailable),
       serverLastSeenAt: serverSubscription?.lastSeenAt || null,
       serverUpdatedAt: serverSubscription?.updatedAt || null,
       serverError: serverSubscription?.error || '',

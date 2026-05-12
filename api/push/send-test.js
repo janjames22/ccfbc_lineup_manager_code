@@ -3,19 +3,17 @@ import {
   createPushPayload,
   getRequestBody,
   getSupabaseAdmin,
+  normalizeSubscription,
   sendPushPayload,
+  sendPushPayloadToSubscriptions,
+  validatePushSubscription,
 } from '../_push.js';
 
 export default async function handler(request, response) {
   if (!allowMethods(request, response, ['POST'])) return;
 
-  const supabase = getSupabaseAdmin();
-  if (!supabase) {
-    response.status(500).json({ error: 'Push subscription storage is not configured.' });
-    return;
-  }
-
   const body = getRequestBody(request);
+  const supabase = getSupabaseAdmin();
   const targetEndpoint = body.targetEndpoint || body.endpoint || '';
   const payload = createPushPayload({
     title: body.title || 'Line Up Manager',
@@ -26,7 +24,23 @@ export default async function handler(request, response) {
   });
 
   try {
-    const result = await sendPushPayload(supabase, payload, { targetEndpoint });
+    let result;
+
+    if (supabase) {
+      result = await sendPushPayload(supabase, payload, { targetEndpoint });
+    } else {
+      const directSubscription = normalizeSubscription(body, request);
+      const validationError = validatePushSubscription(directSubscription);
+      if (validationError) {
+        response.status(500).json({
+          error: 'Push subscription storage is not configured. Add SUPABASE_SERVICE_ROLE_KEY on the server, or send a complete browser subscription for this device test.',
+        });
+        return;
+      }
+
+      result = await sendPushPayloadToSubscriptions(null, payload, [directSubscription]);
+    }
+
     if (targetEndpoint && result.total === 0) {
       response.status(404).json({ ...result, error: 'No active push subscription found for this device.' });
       return;

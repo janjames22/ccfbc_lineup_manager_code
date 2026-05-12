@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS public.push_subscriptions (
     user_agent TEXT,
     device_label TEXT,
     device_id TEXT,
+    platform TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     last_seen_at TIMESTAMPTZ,
@@ -60,8 +61,41 @@ CREATE TABLE IF NOT EXISTS public.push_subscriptions (
 ALTER TABLE public.push_subscriptions
     ADD COLUMN IF NOT EXISTS device_label TEXT,
     ADD COLUMN IF NOT EXISTS device_id TEXT,
+    ADD COLUMN IF NOT EXISTS platform TEXT,
     ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'push_subscriptions_endpoint_https_check'
+          AND conrelid = 'public.push_subscriptions'::regclass
+    ) THEN
+        ALTER TABLE public.push_subscriptions
+            ADD CONSTRAINT push_subscriptions_endpoint_https_check
+            CHECK (endpoint ~ '^https://') NOT VALID;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'push_subscriptions_required_fields_check'
+          AND conrelid = 'public.push_subscriptions'::regclass
+    ) THEN
+        ALTER TABLE public.push_subscriptions
+            ADD CONSTRAINT push_subscriptions_required_fields_check
+            CHECK (
+                char_length(endpoint) BETWEEN 20 AND 2048
+                AND char_length(p256dh) BETWEEN 40 AND 512
+                AND char_length(auth) BETWEEN 10 AND 256
+                AND (device_id IS NULL OR char_length(device_id) <= 200)
+                AND (device_label IS NULL OR char_length(device_label) <= 200)
+                AND (platform IS NULL OR platform IN ('', 'ios', 'android', 'web'))
+            ) NOT VALID;
+    END IF;
+END $$;
 
 -- ============================================
 -- LINEUP NOTIFICATIONS TABLE
@@ -173,21 +207,40 @@ DROP POLICY IF EXISTS "Allow public insert on push subscriptions" ON public.push
 DROP POLICY IF EXISTS "Allow public update on push subscriptions" ON public.push_subscriptions;
 DROP POLICY IF EXISTS "Allow public push subscription insert" ON public.push_subscriptions;
 DROP POLICY IF EXISTS "Allow public push subscription update" ON public.push_subscriptions;
+DROP POLICY IF EXISTS "Allow safe public push subscription insert" ON public.push_subscriptions;
+DROP POLICY IF EXISTS "Allow safe public push subscription refresh" ON public.push_subscriptions;
 
-CREATE POLICY "Allow public push subscription insert"
+-- The frontend should save subscriptions through /api/push/subscribe. These
+-- public policies exist only so that API route can fall back to the anon key
+-- for INSERT/UPSERT when the service role key is unavailable. No public SELECT
+-- policy is added, so subscription rows are not listable by public clients.
+CREATE POLICY "Allow safe public push subscription insert"
 ON public.push_subscriptions
     FOR INSERT WITH CHECK (
-        endpoint IS NOT NULL
-        AND p256dh IS NOT NULL
-        AND auth IS NOT NULL
+        endpoint ~ '^https://'
+        AND char_length(endpoint) BETWEEN 20 AND 2048
+        AND char_length(p256dh) BETWEEN 40 AND 512
+        AND char_length(auth) BETWEEN 10 AND 256
+        AND (device_id IS NULL OR char_length(device_id) <= 200)
+        AND (device_label IS NULL OR char_length(device_label) <= 200)
+        AND (platform IS NULL OR platform IN ('', 'ios', 'android', 'web'))
     );
 
-CREATE POLICY "Allow public push subscription update"
+CREATE POLICY "Allow safe public push subscription refresh"
 ON public.push_subscriptions
-    FOR UPDATE USING (true) WITH CHECK (
-        endpoint IS NOT NULL
-        AND p256dh IS NOT NULL
-        AND auth IS NOT NULL
+    FOR UPDATE USING (
+        endpoint ~ '^https://'
+        AND char_length(endpoint) BETWEEN 20 AND 2048
+        AND char_length(p256dh) BETWEEN 40 AND 512
+        AND char_length(auth) BETWEEN 10 AND 256
+    ) WITH CHECK (
+        endpoint ~ '^https://'
+        AND char_length(endpoint) BETWEEN 20 AND 2048
+        AND char_length(p256dh) BETWEEN 40 AND 512
+        AND char_length(auth) BETWEEN 10 AND 256
+        AND (device_id IS NULL OR char_length(device_id) <= 200)
+        AND (device_label IS NULL OR char_length(device_label) <= 200)
+        AND (platform IS NULL OR platform IN ('', 'ios', 'android', 'web'))
     );
 
 -- No public SELECT policy is added. Server/admin logic should send notifications
@@ -213,6 +266,7 @@ CREATE INDEX idx_lineups_date ON lineups(date);
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint ON public.push_subscriptions(endpoint);
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_active ON public.push_subscriptions(is_active);
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_device_id ON public.push_subscriptions(device_id);
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_platform ON public.push_subscriptions(platform);
 CREATE INDEX IF NOT EXISTS idx_lineup_notifications_lineup_id ON public.lineup_notifications(lineup_id);
 CREATE INDEX IF NOT EXISTS idx_lineup_notifications_subscription_endpoint ON public.lineup_notifications(subscription_endpoint);
 CREATE INDEX IF NOT EXISTS idx_lineup_notifications_user_id ON public.lineup_notifications(user_id);
@@ -233,6 +287,17 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+CREATE OR REPLACE FUNCTION public.prevent_push_subscription_endpoint_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.endpoint IS DISTINCT FROM OLD.endpoint THEN
+        RAISE EXCEPTION 'push subscription endpoint cannot be changed';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
 -- Trigger for songs table
 CREATE TRIGGER update_songs_updated_at BEFORE UPDATE ON songs
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -240,6 +305,10 @@ CREATE TRIGGER update_songs_updated_at BEFORE UPDATE ON songs
 -- Trigger for lineups table
 CREATE TRIGGER update_lineups_updated_at BEFORE UPDATE ON lineups
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS prevent_push_subscription_endpoint_change ON public.push_subscriptions;
+CREATE TRIGGER prevent_push_subscription_endpoint_change BEFORE UPDATE ON public.push_subscriptions
+    FOR EACH ROW EXECUTE FUNCTION public.prevent_push_subscription_endpoint_change();
 
 DROP TRIGGER IF EXISTS update_push_subscriptions_updated_at ON public.push_subscriptions;
 CREATE TRIGGER update_push_subscriptions_updated_at BEFORE UPDATE ON public.push_subscriptions

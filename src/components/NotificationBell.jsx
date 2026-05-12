@@ -96,8 +96,8 @@ export default function NotificationBell({
       </button>
 
       {open && (
-        <div className="fixed left-4 right-4 top-28 z-[120] pointer-events-auto overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl ring-1 ring-white/10 lg:absolute lg:left-auto lg:right-0 lg:top-full lg:mt-2 lg:w-[min(calc(100vw-2rem),22rem)]">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-800 p-4">
+        <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] top-[calc(env(safe-area-inset-top)+4.75rem)] z-[120] pointer-events-auto overflow-y-auto overscroll-contain rounded-xl border border-slate-700 bg-slate-900 shadow-2xl ring-1 ring-white/10 lg:absolute lg:inset-x-auto lg:bottom-auto lg:right-0 lg:top-full lg:mt-2 lg:max-h-[min(42rem,calc(100vh-8rem))] lg:w-[min(calc(100vw-2rem),22rem)]">
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/95 p-4 backdrop-blur">
             <div>
               <p className="text-sm font-black text-white">Notifications</p>
               <p className="text-xs font-semibold text-slate-500">{unreadCount ? `${unreadCount} unread` : 'All caught up'}</p>
@@ -131,7 +131,7 @@ export default function NotificationBell({
             <PhoneNotificationsButton />
           </div>
 
-          <div className="max-h-80 overflow-y-auto">
+          <div>
             {sortedNotifications.length ? sortedNotifications.map((notification) => (
               <div
                 key={notification.id}

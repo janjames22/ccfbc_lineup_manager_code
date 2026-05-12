@@ -52,6 +52,45 @@ export function getSupabaseAdmin() {
   });
 }
 
+export function getSupabaseConfigStatus() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+
+  if (!url) {
+    return {
+      ok: false,
+      reason: 'Supabase URL missing. Add SUPABASE_URL or VITE_SUPABASE_URL on the server.',
+    };
+  }
+
+  if (!serviceRoleKey && !anonKey) {
+    return {
+      ok: false,
+      reason: 'Supabase anon key missing. Add SUPABASE_ANON_KEY or VITE_SUPABASE_ANON_KEY on the server.',
+    };
+  }
+
+  return {
+    ok: true,
+    hasServiceRoleKey: Boolean(serviceRoleKey),
+    hasAnonKey: Boolean(anonKey),
+  };
+}
+
+export function getSupabasePublicWriteClient() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+
+  if (!url || !key) return null;
+  return createClient(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+}
+
 export function getVapidPublicKey() {
   return process.env.VAPID_PUBLIC_KEY || process.env.VITE_VAPID_PUBLIC_KEY || '';
 }
@@ -79,10 +118,42 @@ export function normalizeSubscription(body = {}, request) {
     user_agent: body.user_agent || body.userAgent || getHeader(request, 'user-agent') || '',
     device_label: body.device_label || body.deviceLabel || '',
     device_id: body.device_id || body.deviceId || '',
+    platform: body.platform || '',
   };
 }
 
-export async function upsertPushSubscription(supabase, subscription) {
+export function validatePushSubscription(subscription = {}) {
+  const endpoint = String(subscription.endpoint || '');
+  const p256dh = String(subscription.p256dh || '');
+  const auth = String(subscription.auth || '');
+
+  if (!endpoint || !p256dh || !auth) {
+    return 'Missing push subscription fields.';
+  }
+
+  let parsedEndpoint;
+  try {
+    parsedEndpoint = new URL(endpoint);
+  } catch {
+    return 'Push subscription endpoint is not a valid URL.';
+  }
+
+  if (parsedEndpoint.protocol !== 'https:') {
+    return 'Push subscription endpoint must use HTTPS.';
+  }
+
+  if (endpoint.length < 20 || endpoint.length > 2048) {
+    return 'Push subscription endpoint length is invalid.';
+  }
+
+  if (p256dh.length < 40 || p256dh.length > 512 || auth.length < 10 || auth.length > 256) {
+    return 'Push subscription keys are invalid.';
+  }
+
+  return '';
+}
+
+export async function upsertPushSubscription(supabase, subscription, { selectResult = true } = {}) {
   const now = new Date().toISOString();
   const record = {
     endpoint: subscription.endpoint,
@@ -91,18 +162,21 @@ export async function upsertPushSubscription(supabase, subscription) {
     user_agent: subscription.user_agent || '',
     device_label: subscription.device_label || '',
     device_id: subscription.device_id || '',
+    platform: subscription.platform || '',
     updated_at: now,
     last_seen_at: now,
     is_active: true,
   };
 
-  const result = await supabase
+  const query = supabase
     .from('push_subscriptions')
-    .upsert(record, { onConflict: 'endpoint' })
-    .select('endpoint')
-    .single();
+    .upsert(record, { onConflict: 'endpoint' });
 
-  if (!result.error) return result.data;
+  const result = selectResult
+    ? await query.select('endpoint').single()
+    : await query;
+
+  if (!result.error) return result.data || { endpoint: subscription.endpoint };
 
   if (!MISSING_COLUMN_CODES.has(result.error.code)) {
     throw result.error;
@@ -116,20 +190,36 @@ export async function upsertPushSubscription(supabase, subscription) {
     updated_at: record.updated_at,
   };
 
-  const fallbackResult = await supabase
+  const fallbackQuery = supabase
     .from('push_subscriptions')
-    .upsert(fallbackRecord, { onConflict: 'endpoint' })
-    .select('endpoint')
-    .single();
+    .upsert(fallbackRecord, { onConflict: 'endpoint' });
+
+  const fallbackResult = selectResult
+    ? await fallbackQuery.select('endpoint').single()
+    : await fallbackQuery;
 
   if (fallbackResult.error) throw fallbackResult.error;
-  return fallbackResult.data;
+  return fallbackResult.data || { endpoint: subscription.endpoint };
 }
 
 export async function deletePushSubscription(supabase, endpoint) {
   const { error } = await supabase
     .from('push_subscriptions')
     .delete()
+    .eq('endpoint', endpoint);
+
+  if (error) throw error;
+}
+
+export async function deactivatePushSubscription(supabase, endpoint) {
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('push_subscriptions')
+    .update({
+      is_active: false,
+      updated_at: now,
+      last_seen_at: now,
+    })
     .eq('endpoint', endpoint);
 
   if (error) throw error;
@@ -311,15 +401,13 @@ export async function loadLineup(supabase, lineupId) {
   return data;
 }
 
-export async function sendPushPayload(supabase, payload, { excludeEndpoint = '', targetEndpoint = '' } = {}) {
+export async function sendPushPayloadToSubscriptions(supabase, payload, subscriptions) {
   const vapid = getVapidConfig();
   if (!vapid) {
     const error = new Error('Web Push is not configured.');
     error.statusCode = 500;
     throw error;
   }
-
-  const subscriptions = await loadPushSubscriptions(supabase, { excludeEndpoint, targetEndpoint });
 
   webPush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
 
@@ -353,8 +441,13 @@ export async function sendPushPayload(supabase, payload, { excludeEndpoint = '',
     console.error('[PushNotifications] push send failed:', result.reason);
   });
 
-  await markExpiredSubscriptions(supabase, expiredEndpoints);
-  const notificationRecords = await createLineupNotificationRecords(supabase, payload, subscriptions, results);
+  if (supabase) {
+    await markExpiredSubscriptions(supabase, expiredEndpoints);
+  }
+
+  const notificationRecords = supabase
+    ? await createLineupNotificationRecords(supabase, payload, subscriptions, results)
+    : 0;
 
   const summary = {
     ok: true,
@@ -367,4 +460,9 @@ export async function sendPushPayload(supabase, payload, { excludeEndpoint = '',
 
   debugPushServer('backend push send result', summary);
   return summary;
+}
+
+export async function sendPushPayload(supabase, payload, { excludeEndpoint = '', targetEndpoint = '' } = {}) {
+  const subscriptions = await loadPushSubscriptions(supabase, { excludeEndpoint, targetEndpoint });
+  return sendPushPayloadToSubscriptions(supabase, payload, subscriptions);
 }

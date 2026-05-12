@@ -2,6 +2,7 @@ import {
   allowMethods,
   getRequestBody,
   getSupabaseAdmin,
+  getSupabaseConfigStatus,
   MISSING_COLUMN_CODES,
 } from '../_push.js';
 
@@ -10,7 +11,16 @@ export default async function handler(request, response) {
 
   const supabase = getSupabaseAdmin();
   if (!supabase) {
-    response.status(500).json({ error: 'Push subscription storage is not configured.' });
+    const config = getSupabaseConfigStatus();
+    response.status(200).json({
+      ok: true,
+      saved: null,
+      active: null,
+      checkUnavailable: true,
+      error: config.ok
+        ? 'Subscription verification requires SUPABASE_SERVICE_ROLE_KEY on the server.'
+        : config.reason,
+    });
     return;
   }
 
@@ -38,6 +48,11 @@ export default async function handler(request, response) {
 
   if (error) {
     console.error('[PushNotifications] failed to check push subscription:', error);
+    if (MISSING_COLUMN_CODES.has(error.code)) {
+      response.status(500).json({ error: 'push_subscriptions table missing or outdated. Apply supabase-schema.sql in Supabase.' });
+      return;
+    }
+
     response.status(500).json({ error: error.message || 'Unable to check push subscription.' });
     return;
   }
