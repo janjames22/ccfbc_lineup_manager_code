@@ -149,11 +149,19 @@ export default function App() {
     if (!('serviceWorker' in navigator)) return undefined;
 
     const handleServiceWorkerMessage = (event) => {
-      if (event.data?.type !== 'LINEUP_NOTIFICATION_CLICK') return;
+      if (!['LINEUP_NOTIFICATION_CLICK', 'OPEN_LINEUP_FROM_NOTIFICATION'].includes(event.data?.type)) return;
 
       try {
         const targetUrl = new URL(event.data.url || '/lineups', window.location.origin);
         if (targetUrl.origin !== window.location.origin) return;
+        const matchingNotification = lineupNotifications.find((notification) => (
+          !notification.read
+          && (
+            notification.id === event.data.notificationId
+            || notification.lineupId === event.data.lineupId
+          )
+        ));
+        if (matchingNotification) markSingleLineupNotificationRead(matchingNotification.id);
         navigate(`${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`);
       } catch (error) {
         console.error('[PushNotifications] notification click message could not be handled:', error);
@@ -164,7 +172,7 @@ export default function App() {
     return () => {
       navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
     };
-  }, [navigate]);
+  }, [lineupNotifications, markSingleLineupNotificationRead, navigate]);
 
   const reloadAppForUpdate = (reason) => {
     if (reloadTriggeredRef.current) return;
@@ -387,7 +395,7 @@ export default function App() {
         </footer>
       )}
 
-      {showAppChrome && <BottomNav />}
+      {showAppChrome && <BottomNav unreadNotificationCount={unreadLineupNotifications} />}
     </div>
   );
 }

@@ -18,6 +18,17 @@ const IMAGE_CACHE = `${CACHE_PREFIX}-images-${BUILD_VERSION}`;
 const CACHE_PREFIXES_TO_CLEAN = ['lineup-manager', 'workbox-precache', 'workbox-runtime'];
 const IS_DEV_HOST = ['localhost', '127.0.0.1', '[::1]'].includes(self.location.hostname);
 const IS_DEV_BUILD = BUILD_VERSION === 'dev' || IS_DEV_HOST;
+const NOTIFICATIONS_DB_NAME = 'lineup-manager-notifications';
+const NOTIFICATIONS_DB_VERSION = 1;
+const METADATA_STORE = 'metadata';
+const PENDING_PUSH_STORE = 'pendingPushNotifications';
+const NOTIFICATION_METADATA_KEYS = {
+  unreadCount: 'unreadCount',
+  lastPushReceivedAt: 'lastPushReceivedAt',
+  lastBadgeSyncAt: 'lastBadgeSyncAt',
+  latestNotificationId: 'latestNotificationId',
+  latestLineupId: 'latestLineupId',
+};
 
 function debugPush(message, details) {
   if (!IS_DEV_BUILD) return;
@@ -43,6 +54,239 @@ function readPushPayload(event) {
   }
 }
 
+function requestToPromise(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function transactionDone(transaction) {
+  return new Promise((resolve, reject) => {
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+}
+
+function openNotificationsDb() {
+  return new Promise((resolve, reject) => {
+    if (!self.indexedDB) {
+      reject(new Error('IndexedDB is not available.'));
+      return;
+    }
+
+    const request = self.indexedDB.open(NOTIFICATIONS_DB_NAME, NOTIFICATIONS_DB_VERSION);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(METADATA_STORE)) {
+        db.createObjectStore(METADATA_STORE, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(PENDING_PUSH_STORE)) {
+        db.createObjectStore(PENDING_PUSH_STORE, { keyPath: 'id' });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function getMetadata(key) {
+  const db = await openNotificationsDb();
+  try {
+    const transaction = db.transaction(METADATA_STORE, 'readonly');
+    const record = await requestToPromise(transaction.objectStore(METADATA_STORE).get(key));
+    return record?.value ?? null;
+  } finally {
+    db.close();
+  }
+}
+
+async function setMetadata(key, value) {
+  const db = await openNotificationsDb();
+  try {
+    const transaction = db.transaction(METADATA_STORE, 'readwrite');
+    transaction.objectStore(METADATA_STORE).put({
+      key,
+      value,
+      updatedAt: new Date().toISOString(),
+    });
+    await transactionDone(transaction);
+    return value;
+  } finally {
+    db.close();
+  }
+}
+
+async function getLocalUnreadCount() {
+  try {
+    return Math.max(0, Number(await getMetadata(NOTIFICATION_METADATA_KEYS.unreadCount)) || 0);
+  } catch (error) {
+    debugPush('badge count could not be read', error);
+    return 0;
+  }
+}
+
+async function setLocalUnreadCount(count) {
+  try {
+    const normalizedCount = Math.max(0, Number(count) || 0);
+    await setMetadata(NOTIFICATION_METADATA_KEYS.unreadCount, normalizedCount);
+    return normalizedCount;
+  } catch (error) {
+    debugPush('badge count could not be written', error);
+    return Math.max(0, Number(count) || 0);
+  }
+}
+
+async function syncAppBadgeFromServiceWorker(serverBadgeCount) {
+  const normalizedCount = Math.max(
+    0,
+    Number(typeof serverBadgeCount === 'undefined' ? await getLocalUnreadCount() : serverBadgeCount) || 0
+  );
+  const serviceWorkerNavigator = self.navigator;
+
+  if (typeof serverBadgeCount !== 'undefined') {
+    await setLocalUnreadCount(normalizedCount);
+  }
+
+  try {
+    await setMetadata(NOTIFICATION_METADATA_KEYS.lastBadgeSyncAt, new Date().toISOString());
+  } catch (error) {
+    debugPush('badge sync metadata could not be written', error);
+  }
+
+  if (!serviceWorkerNavigator || !('setAppBadge' in serviceWorkerNavigator)) return normalizedCount;
+
+  try {
+    if (normalizedCount > 0) {
+      await serviceWorkerNavigator.setAppBadge(normalizedCount);
+    } else if ('clearAppBadge' in serviceWorkerNavigator) {
+      await serviceWorkerNavigator.clearAppBadge();
+    } else {
+      await serviceWorkerNavigator.setAppBadge(0);
+    }
+    debugPush('app badge updated from service worker', { count: normalizedCount });
+  } catch (error) {
+    debugPush('service worker app badge update was blocked or unsupported', error);
+  }
+
+  return normalizedCount;
+}
+
+async function incrementLocalUnreadCount(_payload = {}) {
+  const currentCount = await getLocalUnreadCount();
+  return syncAppBadgeFromServiceWorker(currentCount + 1);
+}
+
+async function decrementLocalUnreadCount() {
+  const currentCount = await getLocalUnreadCount();
+  return syncAppBadgeFromServiceWorker(currentCount - 1);
+}
+
+async function clearLocalUnreadCount() {
+  return syncAppBadgeFromServiceWorker(0);
+}
+
+async function markNotificationReadFromServiceWorker(notificationId) {
+  const markedRead = await markPendingPushNotificationRead(notificationId);
+  if (markedRead) await decrementLocalUnreadCount();
+  return markedRead;
+}
+
+function createPendingPushNotification(payload = {}, options = {}) {
+  const lineupId = options.data?.lineupId;
+  if (!lineupId) return null;
+
+  const timestamp = options.data?.timestamp || options.timestamp || Date.now();
+  const createdAt = new Date(timestamp).toISOString();
+
+  return {
+    id: options.data?.notificationId || `lineup-${lineupId}`,
+    type: 'lineup_created',
+    title: payload.title || 'New lineup added',
+    message: payload.body || options.body || 'Tap to open lineup',
+    body: payload.body || options.body || '',
+    lineupId,
+    url: options.data?.url || `/lineups/${lineupId}`,
+    timestamp: createdAt,
+    createdAt,
+    read: false,
+    source: 'web_push',
+  };
+}
+
+async function readPendingPushNotification(notificationId) {
+  if (!notificationId) return null;
+
+  try {
+    const db = await openNotificationsDb();
+    const transaction = db.transaction(PENDING_PUSH_STORE, 'readonly');
+    const record = await requestToPromise(transaction.objectStore(PENDING_PUSH_STORE).get(notificationId));
+    db.close();
+    return record || null;
+  } catch (error) {
+    debugPush('pending push notification could not be read', error);
+    return null;
+  }
+}
+
+async function writePendingPushNotification(record) {
+  try {
+    const db = await openNotificationsDb();
+    const transaction = db.transaction(PENDING_PUSH_STORE, 'readwrite');
+    transaction.objectStore(PENDING_PUSH_STORE).put(record);
+    await transactionDone(transaction);
+    db.close();
+    return true;
+  } catch (error) {
+    debugPush('pending push notification could not be written', error);
+    return false;
+  }
+}
+
+async function storePendingPushNotification(record) {
+  if (!record?.id) return false;
+
+  const existing = await readPendingPushNotification(record.id);
+  const shouldIncreaseBadge = !existing || existing.read;
+  const didWrite = await writePendingPushNotification({
+    ...(existing || {}),
+    ...record,
+    read: false,
+  });
+
+  return didWrite ? shouldIncreaseBadge : true;
+}
+
+async function recordLatestPushMetadata(record) {
+  const now = new Date().toISOString();
+
+  try {
+    await Promise.all([
+      setMetadata(NOTIFICATION_METADATA_KEYS.lastPushReceivedAt, now),
+      record?.id ? setMetadata(NOTIFICATION_METADATA_KEYS.latestNotificationId, record.id) : Promise.resolve(),
+      record?.lineupId ? setMetadata(NOTIFICATION_METADATA_KEYS.latestLineupId, record.lineupId) : Promise.resolve(),
+    ]);
+  } catch (error) {
+    debugPush('latest push metadata could not be written', error);
+  }
+}
+
+async function markPendingPushNotificationRead(notificationId) {
+  if (!notificationId) return false;
+
+  const existing = await readPendingPushNotification(notificationId);
+  if (!existing || existing.read) return false;
+
+  return writePendingPushNotification({
+    ...existing,
+    read: true,
+    readAt: new Date().toISOString(),
+  });
+}
+
 function getNotificationUrl(payload = {}) {
   const fallbackUrl = payload.lineupId ? `/lineups/${payload.lineupId}` : '/lineups';
   const rawUrl = payload.url || payload.data?.url || fallbackUrl;
@@ -54,6 +298,7 @@ function createNotificationOptions(payload = {}) {
   const url = getNotificationUrl({ ...payload, lineupId });
   const timestampValue = payload.timestamp ? Date.parse(payload.timestamp) : Date.now();
   const timestamp = Number.isFinite(timestampValue) ? timestampValue : Date.now();
+  const notificationId = payload.notificationId || payload.id || (lineupId ? `lineup-${lineupId}` : `push-${timestamp}`);
 
   return {
     body: payload.body || 'New notification',
@@ -63,9 +308,19 @@ function createNotificationOptions(payload = {}) {
     timestamp,
     renotify: payload.renotify !== false,
     requireInteraction: payload.requireInteraction === true,
+    silent: payload.silent === true,
     vibrate: [200, 100, 200],
+    actions: Array.isArray(payload.actions)
+      ? payload.actions
+      : lineupId
+        ? [
+            { action: 'view-lineup', title: 'View lineup' },
+            { action: 'mark-read', title: 'Mark read' },
+          ]
+        : [],
     data: {
       ...(payload.data || {}),
+      notificationId,
       url,
       lineupId,
       timestamp,
@@ -82,19 +337,20 @@ async function focusOrOpenNotificationUrl(urlToOpen, notificationData = {}) {
     if (clientUrl.origin !== self.location.origin) continue;
 
     let targetClient = client;
-    if ('navigate' in targetClient) {
-      targetClient = await targetClient.navigate(targetUrl.href) || targetClient;
-    }
-
     if ('focus' in targetClient) {
       await targetClient.focus();
     }
 
     targetClient.postMessage?.({
-      type: 'LINEUP_NOTIFICATION_CLICK',
+      type: 'OPEN_LINEUP_FROM_NOTIFICATION',
       lineupId: notificationData.lineupId || null,
+      notificationId: notificationData.notificationId || null,
       url: `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`,
     });
+
+    if ('navigate' in targetClient) {
+      await targetClient.navigate(targetUrl.href);
+    }
 
     return;
   }
@@ -102,6 +358,26 @@ async function focusOrOpenNotificationUrl(urlToOpen, notificationData = {}) {
   if (clients.openWindow) {
     await clients.openWindow(targetUrl.href);
   }
+}
+
+async function handleNotificationClick(event) {
+  const notification = event.notification;
+  const action = event.action;
+  const data = notification.data || {};
+
+  notification.close();
+
+  if (action === 'mark-read') {
+    await markNotificationReadFromServiceWorker(data.notificationId);
+    await syncAppBadgeFromServiceWorker();
+    return;
+  }
+
+  const targetUrl = new URL(data.url || '/', self.location.origin).href;
+
+  await markNotificationReadFromServiceWorker(data.notificationId);
+  await syncAppBadgeFromServiceWorker();
+  await focusOrOpenNotificationUrl(targetUrl, data);
 }
 
 setCacheNameDetails({
@@ -134,6 +410,12 @@ self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') {
     console.log('[PWA] activating new service worker', { buildVersion: BUILD_VERSION });
     self.skipWaiting();
+    return;
+  }
+
+  if (event.data?.type === 'LINEUP_BADGE_SYNC') {
+    const nextCount = Math.max(0, Number(event.data.count) || 0);
+    event.waitUntil?.(nextCount > 0 ? syncAppBadgeFromServiceWorker(nextCount) : clearLocalUnreadCount());
   }
 });
 
@@ -164,21 +446,42 @@ self.addEventListener('push', (event) => {
 
   debugPush('push event received', { title, options });
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    (async () => {
+      const pendingNotification = createPendingPushNotification(payload, options);
+      if (pendingNotification) {
+        await recordLatestPushMetadata(pendingNotification);
+        const shouldIncreaseBadge = await storePendingPushNotification(pendingNotification);
+        if (shouldIncreaseBadge) {
+          await incrementLocalUnreadCount(payload);
+        } else {
+          await syncAppBadgeFromServiceWorker();
+        }
+      } else {
+        try {
+          await setMetadata(NOTIFICATION_METADATA_KEYS.lastPushReceivedAt, new Date().toISOString());
+        } catch (error) {
+          debugPush('last push metadata could not be written', error);
+        }
+      }
+
+      await self.registration.showNotification(title, options);
+    })()
+  );
 });
 
 self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
+  debugPush('notification click URL', {
+    action: event.action || 'default',
+    url: event.notification.data?.url || '/',
+    lineupId: event.notification.data?.lineupId || null,
+  });
 
-  const notificationData = event.notification.data || {};
-  const urlToOpen = notificationData.url || '/lineups';
-
-  debugPush('notification click URL', { url: urlToOpen, lineupId: notificationData.lineupId });
-
-  event.waitUntil(focusOrOpenNotificationUrl(urlToOpen, notificationData));
+  event.waitUntil(handleNotificationClick(event));
 });
 
 self.addEventListener('notificationclose', (event) => {
+  console.log('[SW] Notification closed:', event.notification?.data);
   debugPush('notification closed', {
     tag: event.notification.tag,
     lineupId: event.notification.data?.lineupId || null,

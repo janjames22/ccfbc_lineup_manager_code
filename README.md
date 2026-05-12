@@ -4,10 +4,11 @@ A local-first React app for worship song chord charts, Sunday lineups, team assi
 
 ## Notifications
 
-Lineup notifications use two layers:
+Lineup notifications use three layers:
 
 - In-app sound plays only on the active device after the first user interaction.
 - Idle/background phone and iPad notifications use PWA Web Push.
+- Installed app icon badges use the App Badging API where the browser and OS support it.
 
 Required environment variables:
 
@@ -27,8 +28,12 @@ Web Push routes:
 - `POST /api/push/unsubscribe`
 - `POST /api/push/send-test`
 - `POST /api/push/send-lineup`
+- `POST /api/lineup-notifications/mark-read`
+
+The optional server-side `lineup_notifications` table stores notification history/read-state metadata through trusted API routes only. The public frontend still keeps the member-facing notification panel device-local and does not need login.
 
 iPhone/iPad Web Push requires a supported iOS/iPadOS version and the PWA installed to the Home Screen. Web push cannot force a custom sound while the app is idle or the screen is locked; the OS notification sound settings control that behavior.
+Android/iOS notification settings, Focus Mode, Do Not Disturb, battery saver, and browser/PWA rules still decide whether a push appears as a banner, status notification, lock-screen notification, or only in the notification tray.
 
 ## Run
 

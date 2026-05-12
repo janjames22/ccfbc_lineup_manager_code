@@ -6,11 +6,27 @@ const navLinkClass = ({ isActive }) =>
     isActive ? 'text-blue-500 scale-110' : 'text-slate-500 hover:text-slate-300'
   }`;
 
-export default function BottomNav() {
+function UnreadBadge({ count }) {
+  if (!count) return null;
+
+  return (
+    <span
+      className="absolute -right-2 -top-1 grid min-w-5 place-items-center rounded-full bg-blue-500 px-1 text-[10px] font-black leading-5 text-white shadow-lg ring-2 ring-slate-900"
+      aria-label={`${count} unread notification${count === 1 ? '' : 's'}`}
+    >
+      {count > 9 ? '9+' : count}
+    </span>
+  );
+}
+
+export default function BottomNav({ unreadNotificationCount = 0 }) {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 items-end gap-1 border-t border-slate-800/50 bg-slate-900/95 px-2 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-3 backdrop-blur-md print:hidden lg:hidden">
       <NavLink to="/" className={navLinkClass}>
-        <Home size={22} />
+        <span className="relative grid size-6 place-items-center">
+          <Home size={22} />
+          <UnreadBadge count={unreadNotificationCount} />
+        </span>
         <span className="max-w-full truncate text-[9px] font-black uppercase tracking-wider min-[380px]:text-[10px] min-[380px]:tracking-widest">Home</span>
       </NavLink>
       <NavLink to="/songs" className={navLinkClass}>

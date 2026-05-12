@@ -1,5 +1,5 @@
 import { Bell, CheckCheck, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PhoneNotificationsButton from './PhoneNotificationsButton';
 
@@ -26,6 +26,12 @@ export default function NotificationBell({
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
   const navigate = useNavigate();
+  const sortedNotifications = useMemo(() => {
+    return [...notifications].sort((first, second) => {
+      if (first.read !== second.read) return first.read ? 1 : -1;
+      return new Date(second.createdAt || 0).getTime() - new Date(first.createdAt || 0).getTime();
+    });
+  }, [notifications]);
 
   useEffect(() => {
     debugNotificationBell('NotificationBell mounted in Navbar/App layout');
@@ -96,7 +102,13 @@ export default function NotificationBell({
               <p className="text-sm font-black text-white">Notifications</p>
               <p className="text-xs font-semibold text-slate-500">{unreadCount ? `${unreadCount} unread` : 'All caught up'}</p>
             </div>
-            <button className="text-xs font-black uppercase tracking-wider text-blue-300 hover:text-blue-200" type="button" onClick={onMarkAllRead}>
+            <button
+              className="text-xs font-black uppercase tracking-wider text-blue-300 transition-colors hover:text-blue-200 disabled:cursor-not-allowed disabled:text-slate-600"
+              type="button"
+              onClick={onMarkAllRead}
+              disabled={!unreadCount}
+              aria-label="Mark all notifications read"
+            >
               <CheckCheck size={16} className="mr-1 inline" aria-hidden="true" />
               Read
             </button>
@@ -120,20 +132,36 @@ export default function NotificationBell({
           </div>
 
           <div className="max-h-80 overflow-y-auto">
-            {notifications.length ? notifications.map((notification) => (
-              <div key={notification.id} className="flex min-w-0 items-stretch gap-2 border-b border-slate-800/70 p-2 last:border-b-0">
+            {sortedNotifications.length ? sortedNotifications.map((notification) => (
+              <div
+                key={notification.id}
+                className={`flex min-w-0 items-stretch gap-2 border-b p-2 last:border-b-0 ${
+                  notification.read
+                    ? 'border-slate-800/70 bg-slate-900'
+                    : 'border-blue-500/20 bg-blue-500/[0.07]'
+                }`}
+              >
                 <button
                   type="button"
-                  className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                  className={`flex min-w-0 flex-1 cursor-pointer items-start gap-3 rounded-xl px-2 py-2 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/70 ${
+                    notification.read ? 'hover:bg-slate-800/80' : 'hover:bg-blue-500/10'
+                  }`}
                   onClick={() => handleNotificationClick(notification)}
                   aria-label={`Open lineup for ${notification.message || notification.title || 'this notification'}`}
                 >
-                  <span className={`mt-1 size-2 shrink-0 rounded-full ${notification.read ? 'bg-slate-700' : 'bg-blue-400'}`} />
+                  <span className={`mt-1.5 size-2.5 shrink-0 rounded-full ${notification.read ? 'bg-slate-700' : 'bg-blue-400 shadow-[0_0_0_4px_rgba(59,130,246,0.12)]'}`} />
                   <span className="min-w-0 flex-1">
-                    <span className="block break-words text-sm font-black text-white">
-                      {notification.title || 'New lineup added'}
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className={`block min-w-0 flex-1 break-words text-sm font-black ${notification.read ? 'text-slate-300' : 'text-white'}`}>
+                        {notification.title || 'New lineup added'}
+                      </span>
+                      {!notification.read && (
+                        <span className="shrink-0 rounded-full bg-blue-500/20 px-2 py-0.5 text-[10px] font-black uppercase text-blue-200">
+                          New
+                        </span>
+                      )}
                     </span>
-                    <span className="mt-1 block break-words text-xs font-semibold text-slate-400">
+                    <span className={`mt-1 block break-words text-xs font-semibold ${notification.read ? 'text-slate-500' : 'text-slate-300'}`}>
                       {notification.message}
                     </span>
                     <span className="mt-1 block text-xs font-medium text-slate-600">

@@ -2,8 +2,9 @@
 import { createClient } from '@supabase/supabase-js';
 import webPush from 'web-push';
 
-const MISSING_COLUMN_CODES = new Set(['42703', 'PGRST204']);
+const MISSING_COLUMN_CODES = new Set(['42P01', '42703', 'PGRST204', 'PGRST205']);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function debugPushServer(message, details) {
   if (IS_PRODUCTION) return;
@@ -206,6 +207,7 @@ export function formatLineupBody(lineup = {}) {
 
 export function createPushPayload({ title, body, url, tag, lineupId, timestamp }) {
   return JSON.stringify({
+    type: lineupId ? 'lineup_created' : 'test',
     title: title || 'Line Up Manager',
     body: body || 'New notification',
     url: url || (lineupId ? `/lineups/${lineupId}` : '/lineups'),
@@ -215,6 +217,59 @@ export function createPushPayload({ title, body, url, tag, lineupId, timestamp }
     icon: '/icon-192.png',
     badge: '/icon-192.png',
   });
+}
+
+function parsePushPayload(payload) {
+  if (!payload) return {};
+  if (typeof payload === 'object') return payload;
+
+  try {
+    return JSON.parse(payload);
+  } catch {
+    return {};
+  }
+}
+
+function normalizeLineupNotificationId(lineupId) {
+  if (!lineupId) return null;
+  const id = String(lineupId);
+  return UUID_PATTERN.test(id) ? id : null;
+}
+
+export async function createLineupNotificationRecords(supabase, payload, subscriptions, results) {
+  const notification = parsePushPayload(payload);
+  if (!notification.lineupId) return 0;
+
+  const records = subscriptions
+    .map((subscription, index) => ({ subscription, result: results[index] }))
+    .filter(({ result }) => result?.status === 'fulfilled')
+    .map(({ subscription }) => ({
+      type: notification.type || 'lineup_created',
+      lineup_id: normalizeLineupNotificationId(notification.lineupId),
+      title: notification.title || 'New lineup added',
+      body: notification.body || '',
+      url: notification.url || `/lineups/${notification.lineupId}`,
+      is_read: false,
+      subscription_endpoint: subscription.endpoint,
+    }));
+
+  if (!records.length) return 0;
+
+  const { error } = await supabase
+    .from('lineup_notifications')
+    .insert(records);
+
+  if (error) {
+    if (MISSING_COLUMN_CODES.has(error.code)) {
+      console.error('[PushNotifications] lineup_notifications table is not ready. Apply supabase-schema.sql to enable server notification history.', error);
+      return 0;
+    }
+
+    console.error('[PushNotifications] failed to create lineup notification records:', error);
+    return 0;
+  }
+
+  return records.length;
 }
 
 export async function loadLineup(supabase, lineupId) {
@@ -256,7 +311,11 @@ export async function sendPushPayload(supabase, payload, { excludeEndpoint = '',
           auth: subscription.auth,
         },
       },
-      payload
+      payload,
+      {
+        TTL: 24 * 60 * 60,
+        urgency: 'high',
+      }
     ))
   );
 
@@ -273,6 +332,7 @@ export async function sendPushPayload(supabase, payload, { excludeEndpoint = '',
   });
 
   await markExpiredSubscriptions(supabase, expiredEndpoints);
+  const notificationRecords = await createLineupNotificationRecords(supabase, payload, subscriptions, results);
 
   const summary = {
     ok: true,
@@ -280,6 +340,7 @@ export async function sendPushPayload(supabase, payload, { excludeEndpoint = '',
     sent: results.filter((result) => result.status === 'fulfilled').length,
     failed: results.filter((result) => result.status === 'rejected').length,
     expired: expiredEndpoints.length,
+    notificationRecords,
   };
 
   debugPushServer('backend push send result', summary);

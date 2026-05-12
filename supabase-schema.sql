@@ -62,11 +62,69 @@ ALTER TABLE public.push_subscriptions
     ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
 
 -- ============================================
+-- LINEUP NOTIFICATIONS TABLE
+-- ============================================
+-- Server-managed notification history/read-state. This app is public and
+-- currently keeps the member-facing notification list device-local, so no
+-- public SELECT/INSERT/UPDATE policy is added for this table.
+CREATE TABLE IF NOT EXISTS public.lineup_notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    type TEXT NOT NULL DEFAULT 'lineup_created',
+    lineup_id UUID,
+    title TEXT NOT NULL,
+    body TEXT,
+    url TEXT,
+    is_read BOOLEAN DEFAULT FALSE,
+    read_at TIMESTAMPTZ,
+    subscription_endpoint TEXT,
+    device_id TEXT,
+    user_id UUID,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.lineup_notifications
+    ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'lineup_created',
+    ADD COLUMN IF NOT EXISTS lineup_id UUID,
+    ADD COLUMN IF NOT EXISTS title TEXT,
+    ADD COLUMN IF NOT EXISTS body TEXT,
+    ADD COLUMN IF NOT EXISTS url TEXT,
+    ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS subscription_endpoint TEXT,
+    ADD COLUMN IF NOT EXISTS device_id TEXT,
+    ADD COLUMN IF NOT EXISTS user_id UUID,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'lineup_notifications'
+          AND column_name = 'lineup_id'
+          AND data_type <> 'uuid'
+    ) THEN
+        ALTER TABLE public.lineup_notifications
+            ALTER COLUMN lineup_id TYPE UUID USING (
+                CASE
+                    WHEN lineup_id::text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+                    THEN lineup_id::text::uuid
+                    ELSE NULL
+                END
+            );
+    END IF;
+END $$;
+
+-- ============================================
 -- ROW LEVEL SECURITY
 -- ============================================
 ALTER TABLE songs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lineups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.lineup_notifications ENABLE ROW LEVEL SECURITY;
 
 -- ============================================
 -- SONGS POLICIES
@@ -134,6 +192,17 @@ ON public.push_subscriptions
 -- with SUPABASE_SERVICE_ROLE_KEY, which bypasses RLS.
 
 -- ============================================
+-- LINEUP NOTIFICATION POLICIES
+-- ============================================
+DROP POLICY IF EXISTS "Allow public read on lineup notifications" ON public.lineup_notifications;
+DROP POLICY IF EXISTS "Allow public insert on lineup notifications" ON public.lineup_notifications;
+DROP POLICY IF EXISTS "Allow public update on lineup notifications" ON public.lineup_notifications;
+
+-- No public policies are created for lineup_notifications. Vercel API routes
+-- using SUPABASE_SERVICE_ROLE_KEY write notification records and may mark them
+-- read later without exposing the service role key to frontend code.
+
+-- ============================================
 -- INDEXES FOR PERFORMANCE
 -- ============================================
 CREATE INDEX idx_songs_title ON songs(title);
@@ -141,6 +210,11 @@ CREATE INDEX idx_songs_category ON songs(category);
 CREATE INDEX idx_lineups_date ON lineups(date);
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint ON public.push_subscriptions(endpoint);
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_active ON public.push_subscriptions(is_active);
+CREATE INDEX IF NOT EXISTS idx_lineup_notifications_lineup_id ON public.lineup_notifications(lineup_id);
+CREATE INDEX IF NOT EXISTS idx_lineup_notifications_subscription_endpoint ON public.lineup_notifications(subscription_endpoint);
+CREATE INDEX IF NOT EXISTS idx_lineup_notifications_user_id ON public.lineup_notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_lineup_notifications_is_read ON public.lineup_notifications(is_read);
+CREATE INDEX IF NOT EXISTS idx_lineup_notifications_created_at ON public.lineup_notifications(created_at DESC);
 
 -- ============================================
 -- FUNCTION TO AUTO-UPDATE updated_at TIMESTAMP
@@ -163,4 +237,8 @@ CREATE TRIGGER update_lineups_updated_at BEFORE UPDATE ON lineups
 
 DROP TRIGGER IF EXISTS update_push_subscriptions_updated_at ON public.push_subscriptions;
 CREATE TRIGGER update_push_subscriptions_updated_at BEFORE UPDATE ON public.push_subscriptions
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_lineup_notifications_updated_at ON public.lineup_notifications;
+CREATE TRIGGER update_lineup_notifications_updated_at BEFORE UPDATE ON public.lineup_notifications
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

@@ -22,8 +22,16 @@ export default function Navbar({
     <header className="border-b border-slate-800/50 bg-slate-900/95 backdrop-blur-md sticky top-0 z-40 print:hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       <div className="mx-auto flex w-full max-w-7xl min-w-0 flex-col gap-3 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
         <Link to="/" className="group flex min-w-0 items-center gap-3">
-          <div className="relative size-10 overflow-hidden rounded-xl bg-slate-800 p-1 ring-1 ring-white/10 group-hover:ring-white/20 transition-all shadow-lg">
+          <div className="relative size-10 rounded-xl bg-slate-800 p-1 ring-1 ring-white/10 group-hover:ring-white/20 transition-all shadow-lg">
             <img src="/logo.png" alt="Line Up Manager Logo" className="h-full w-full object-contain" />
+            {unreadNotificationCount > 0 && (
+              <span
+                className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-full bg-blue-500 px-1 text-[10px] font-black leading-5 text-white shadow-lg ring-2 ring-slate-900"
+                aria-label={`${unreadNotificationCount} unread notification${unreadNotificationCount === 1 ? '' : 's'}`}
+              >
+                {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+              </span>
+            )}
           </div>
           <span className="min-w-0">
             <span className="block truncate text-base font-extrabold text-white tracking-tight group-hover:text-blue-400 transition-colors">Line Up Manager</span>

@@ -117,3 +117,21 @@ export function createLineupNotification(lineup = {}) {
     read: false,
   };
 }
+
+export function createLineupNotificationFromPush(pushNotification = {}) {
+  const lineupId = pushNotification.lineupId || pushNotification.lineup_id;
+  if (!lineupId) return null;
+
+  return {
+    id: pushNotification.id || `push-lineup-${lineupId}-${Date.now()}`,
+    type: 'lineup_created',
+    title: pushNotification.title || 'New lineup added',
+    lineupId,
+    url: pushNotification.url || `/lineups/${lineupId}`,
+    message: pushNotification.message || pushNotification.body || 'Tap to open lineup',
+    date: pushNotification.date || '',
+    serviceTime: pushNotification.serviceTime || pushNotification.service_time || '',
+    createdAt: pushNotification.createdAt || pushNotification.timestamp || new Date().toISOString(),
+    read: Boolean(pushNotification.read),
+  };
+}
