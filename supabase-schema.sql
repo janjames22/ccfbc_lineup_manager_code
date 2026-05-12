@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS public.push_subscriptions (
 );
 
 ALTER TABLE public.push_subscriptions
+    ADD COLUMN IF NOT EXISTS user_agent TEXT,
     ADD COLUMN IF NOT EXISTS device_label TEXT,
     ADD COLUMN IF NOT EXISTS device_id TEXT,
     ADD COLUMN IF NOT EXISTS platform TEXT,
@@ -83,24 +84,33 @@ BEGIN
             CHECK (endpoint ~ '^https://') NOT VALID;
     END IF;
 
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conname = 'push_subscriptions_required_fields_check'
-          AND conrelid = 'public.push_subscriptions'::regclass
-    ) THEN
-        ALTER TABLE public.push_subscriptions
-            ADD CONSTRAINT push_subscriptions_required_fields_check
-            CHECK (
-                char_length(endpoint) BETWEEN 20 AND 2048
-                AND char_length(p256dh) BETWEEN 40 AND 512
-                AND char_length(auth) BETWEEN 10 AND 256
-                AND (device_id IS NULL OR char_length(device_id) <= 200)
-                AND (device_label IS NULL OR char_length(device_label) <= 200)
-                AND (platform IS NULL OR platform IN ('', 'ios', 'android', 'web'))
-            ) NOT VALID;
-    END IF;
 END $$;
+
+ALTER TABLE public.push_subscriptions
+    DROP CONSTRAINT IF EXISTS push_subscriptions_required_fields_check;
+
+ALTER TABLE public.push_subscriptions
+    ADD CONSTRAINT push_subscriptions_required_fields_check
+    CHECK (
+        char_length(endpoint) BETWEEN 20 AND 2048
+        AND char_length(p256dh) BETWEEN 40 AND 512
+        AND char_length(auth) BETWEEN 10 AND 256
+        AND (device_id IS NULL OR char_length(device_id) <= 200)
+        AND (device_label IS NULL OR char_length(device_label) <= 200)
+        AND (
+            platform IS NULL
+            OR platform IN (
+                '',
+                'ios-pwa',
+                'ios-safari',
+                'android-pwa',
+                'android-chrome',
+                'mac-safari',
+                'desktop-chrome',
+                'desktop-other'
+            )
+        )
+    ) NOT VALID;
 
 -- ============================================
 -- LINEUP NOTIFICATIONS TABLE
@@ -267,41 +277,9 @@ DROP POLICY IF EXISTS "Allow public push subscription update" ON public.push_sub
 DROP POLICY IF EXISTS "Allow safe public push subscription insert" ON public.push_subscriptions;
 DROP POLICY IF EXISTS "Allow safe public push subscription refresh" ON public.push_subscriptions;
 
--- The frontend should save subscriptions through /api/push/subscribe. These
--- public policies exist only so that API route can fall back to the anon key
--- for INSERT/UPSERT when the service role key is unavailable. No public SELECT
--- policy is added, so subscription rows are not listable by public clients.
-CREATE POLICY "Allow safe public push subscription insert"
-ON public.push_subscriptions
-    FOR INSERT WITH CHECK (
-        endpoint ~ '^https://'
-        AND char_length(endpoint) BETWEEN 20 AND 2048
-        AND char_length(p256dh) BETWEEN 40 AND 512
-        AND char_length(auth) BETWEEN 10 AND 256
-        AND (device_id IS NULL OR char_length(device_id) <= 200)
-        AND (device_label IS NULL OR char_length(device_label) <= 200)
-        AND (platform IS NULL OR platform IN ('', 'ios', 'android', 'web'))
-    );
-
-CREATE POLICY "Allow safe public push subscription refresh"
-ON public.push_subscriptions
-    FOR UPDATE USING (
-        endpoint ~ '^https://'
-        AND char_length(endpoint) BETWEEN 20 AND 2048
-        AND char_length(p256dh) BETWEEN 40 AND 512
-        AND char_length(auth) BETWEEN 10 AND 256
-    ) WITH CHECK (
-        endpoint ~ '^https://'
-        AND char_length(endpoint) BETWEEN 20 AND 2048
-        AND char_length(p256dh) BETWEEN 40 AND 512
-        AND char_length(auth) BETWEEN 10 AND 256
-        AND (device_id IS NULL OR char_length(device_id) <= 200)
-        AND (device_label IS NULL OR char_length(device_label) <= 200)
-        AND (platform IS NULL OR platform IN ('', 'ios', 'android', 'web'))
-    );
-
--- No public SELECT policy is added. Server/admin logic should send notifications
--- with SUPABASE_SERVICE_ROLE_KEY, which bypasses RLS.
+-- The frontend must save subscriptions through /api/push/subscribe. No public
+-- INSERT/UPDATE/SELECT policy is added for push_subscriptions; server routes use
+-- SUPABASE_SERVICE_ROLE_KEY only, which bypasses RLS without exposing the key.
 
 -- ============================================
 -- LINEUP NOTIFICATION POLICIES

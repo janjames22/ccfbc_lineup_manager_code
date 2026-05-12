@@ -3,6 +3,7 @@ import {
   getRequestBody,
   getSupabaseAdmin,
   getSupabaseConfigStatus,
+  logPushServer,
   MISSING_COLUMN_CODES,
 } from '../_push.js';
 
@@ -30,6 +31,8 @@ export default async function handler(request, response) {
     return;
   }
 
+  logPushServer('subscription exact endpoint check received', { endpoint });
+
   let { data, error } = await supabase
     .from('push_subscriptions')
     .select('endpoint,is_active,last_seen_at,updated_at,device_id,platform,user_agent')
@@ -47,7 +50,11 @@ export default async function handler(request, response) {
   }
 
   if (error) {
-    console.error('[PushNotifications] failed to check push subscription:', error);
+    console.error('[PushNotifications] push subscription verification failure:', {
+      endpoint,
+      errorCode: error.code,
+      errorMessage: error.message,
+    });
     if (MISSING_COLUMN_CODES.has(error.code)) {
       response.status(500).json({ error: 'push_subscriptions table missing or outdated. Apply supabase-schema.sql in Supabase.' });
       return;
@@ -56,6 +63,15 @@ export default async function handler(request, response) {
     response.status(500).json({ error: error.message || 'Unable to check push subscription.' });
     return;
   }
+
+  logPushServer('push subscription verification success', {
+    endpoint,
+    saved: Boolean(data?.endpoint),
+    deviceId: data?.device_id || '',
+    platform: data?.platform || '',
+    hasUserAgent: Boolean(data?.user_agent),
+    updatedAt: data?.updated_at || null,
+  });
 
   response.status(200).json({
     ok: true,

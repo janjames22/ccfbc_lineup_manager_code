@@ -3,7 +3,7 @@ import { getMetadata, NOTIFICATION_METADATA_KEYS } from './indexedDbNotification
 
 const PUSH_SUBSCRIPTION_ENDPOINT_KEY = 'lineupManagerPushSubscriptionEndpoint';
 const LEGACY_PUSH_DEVICE_ID_KEY = 'lineupManagerPushDeviceId';
-const PUSH_DEVICE_ID_KEY = 'ccfbc_device_id';
+const DEVICE_ID_KEY = 'ccfbc_device_id';
 const STABLE_PRODUCTION_HOST = 'ccfbc-lineup-manager-code.vercel.app';
 const API_BASE = '/api/push';
 const IS_DEV = import.meta.env.DEV;
@@ -21,11 +21,25 @@ function debugPush(message, details) {
   console.log(`[PushNotifications] ${message}`, details);
 }
 
+function logPush(message, details) {
+  if (typeof details === 'undefined') {
+    console.info(`[PushNotifications] ${message}`);
+    return;
+  }
+  console.info(`[PushNotifications] ${message}`, details);
+}
+
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const rawData = window.atob(base64);
   return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+}
+
+function arrayBufferToUrlBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('');
+  return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 function isIosDevice() {
@@ -42,6 +56,11 @@ function isSafariBrowser() {
 function isAndroidDevice() {
   if (typeof navigator === 'undefined') return false;
   return /Android/i.test(navigator.userAgent);
+}
+
+function isChromeBrowser() {
+  if (typeof navigator === 'undefined') return false;
+  return /(Chrome|CriOS|Chromium|Edg\/|OPR\/)/i.test(navigator.userAgent);
 }
 
 function isStandalonePwa() {
@@ -63,9 +82,20 @@ function getDeviceLabel() {
 }
 
 function getPushPlatform() {
-  if (isIosDevice()) return 'ios';
-  if (isAndroidDevice()) return 'android';
-  return 'web';
+  if (typeof navigator === 'undefined') return 'desktop-other';
+
+  const userAgent = navigator.userAgent || '';
+  const navigatorPlatform = navigator.platform || '';
+  const standalone = isStandalonePwa();
+  const isIos = isIosDevice();
+  const isAndroid = isAndroidDevice();
+  const isMac = !isIos && (/Mac/i.test(navigatorPlatform) || /Macintosh|Mac OS X/i.test(userAgent));
+
+  if (isIos) return standalone ? 'ios-pwa' : 'ios-safari';
+  if (isAndroid) return standalone ? 'android-pwa' : 'android-chrome';
+  if (isMac && isSafariBrowser()) return 'mac-safari';
+  if (isChromeBrowser()) return 'desktop-chrome';
+  return 'desktop-other';
 }
 
 function createDeviceId() {
@@ -82,7 +112,7 @@ function createDeviceId() {
 
 export function getPushDeviceId() {
   if (typeof window === 'undefined') return '';
-  const existing = window.localStorage.getItem(PUSH_DEVICE_ID_KEY);
+  const existing = window.localStorage.getItem(DEVICE_ID_KEY);
   if (existing) {
     debugPush('device_id loaded from localStorage', { deviceId: existing });
     return existing;
@@ -90,14 +120,15 @@ export function getPushDeviceId() {
 
   const legacyDeviceId = window.localStorage.getItem(LEGACY_PUSH_DEVICE_ID_KEY);
   if (legacyDeviceId) {
-    window.localStorage.setItem(PUSH_DEVICE_ID_KEY, legacyDeviceId);
+    window.localStorage.setItem(DEVICE_ID_KEY, legacyDeviceId);
     debugPush('device_id migrated to ccfbc_device_id', { deviceId: legacyDeviceId });
     return legacyDeviceId;
   }
 
   const deviceId = createDeviceId();
-  window.localStorage.setItem(PUSH_DEVICE_ID_KEY, deviceId);
+  window.localStorage.setItem(DEVICE_ID_KEY, deviceId);
   debugPush('device_id generated', { deviceId });
+  logPush('generated device_id', { deviceId, storageKey: DEVICE_ID_KEY });
   return deviceId;
 }
 
@@ -165,28 +196,50 @@ async function getServiceWorkerRegistration({ ensure = false } = {}) {
 
 async function saveSubscriptionToServer(subscription) {
   const json = subscription.toJSON();
-  const endpoint = json.endpoint || '';
-  const p256dh = json.keys?.p256dh || '';
-  const auth = json.keys?.auth || '';
-  const deviceId = getPushDeviceId();
+  const p256dhKey = subscription.getKey?.('p256dh');
+  const authKey = subscription.getKey?.('auth');
+  const p256dh = p256dhKey ? arrayBufferToUrlBase64(p256dhKey) : json.keys?.p256dh || '';
+  const auth = authKey ? arrayBufferToUrlBase64(authKey) : json.keys?.auth || '';
+  const endpoint = subscription.endpoint || json.endpoint || '';
+  const device_id = getPushDeviceId();
+  const platform = getPushPlatform();
+  const user_agent = navigator.userAgent || '';
+  const device_label = getDeviceLabel();
   const payload = {
-    subscription: json,
     endpoint,
-    p256dh,
-    auth,
-    userAgent: navigator.userAgent || '',
-    deviceLabel: getDeviceLabel(),
-    deviceId,
-    platform: getPushPlatform(),
+    keys: {
+      p256dh,
+      auth,
+    },
+    device_id,
+    platform,
+    user_agent,
+    device_label,
+  };
+  const loggedPayload = {
+    ...payload,
+    keys: {
+      p256dh: p256dh ? '[present]' : '[missing]',
+      auth: auth ? '[present]' : '[missing]',
+    },
   };
 
   if (!endpoint || !p256dh || !auth) {
     throw new Error('Browser did not return a complete push subscription.');
   }
 
+  logPush('detected platform', {
+    platform,
+    userAgent: user_agent,
+    navigatorPlatform: navigator.platform || '',
+    standalone: isStandalonePwa(),
+  });
+  logPush('current endpoint', { endpoint });
+  logPush('payload sent to API', loggedPayload);
   debugPush('saving subscription through API', {
     endpoint,
-    deviceId,
+    deviceId: device_id,
+    platform,
     hasP256dh: Boolean(p256dh),
     hasAuth: Boolean(auth),
   });
@@ -208,6 +261,8 @@ async function saveSubscriptionToServer(subscription) {
 
 async function checkSubscriptionSavedToServer(endpoint) {
   if (!endpoint) return null;
+
+  logPush('checking exact endpoint in Supabase', { endpoint });
 
   return fetchJson(
     `${API_BASE}/check-subscription`,
@@ -412,7 +467,11 @@ export async function subscribeToLineupPushNotifications({ forceNew = false } = 
 }
 
 export async function resubscribeToLineupPushNotifications() {
-  return subscribeToLineupPushNotifications({ forceNew: true });
+  const result = await subscribeToLineupPushNotifications();
+  return {
+    ...result,
+    message: 'Device resubscribed for phone notifications.',
+  };
 }
 
 export async function unsubscribeFromLineupPushNotifications() {

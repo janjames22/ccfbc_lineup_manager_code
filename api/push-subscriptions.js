@@ -3,18 +3,19 @@ import {
   getRequestBody,
   getSupabaseAdmin,
   getSupabaseConfigStatus,
-  getSupabasePublicWriteClient,
+  logPushServer,
   MISSING_COLUMN_CODES,
   normalizeSubscription,
   upsertPushSubscription,
   validatePushSubscription,
+  validatePushSubscriptionMetadata,
+  verifyPushSubscriptionSaved,
 } from './_push.js';
 
 export default async function handler(request, response) {
   if (!allowMethods(request, response, ['POST'])) return;
 
-  const supabaseAdmin = getSupabaseAdmin();
-  const supabase = supabaseAdmin || getSupabasePublicWriteClient();
+  const supabase = getSupabaseAdmin();
   if (!supabase) {
     const config = getSupabaseConfigStatus();
     response.status(500).json({ error: config.reason || 'Push subscription storage is not configured.' });
@@ -22,21 +23,44 @@ export default async function handler(request, response) {
   }
 
   const subscription = normalizeSubscription(getRequestBody(request), request);
+  logPushServer('legacy subscription save request received', {
+    endpointReceived: subscription.endpoint,
+    deviceIdReceived: subscription.device_id,
+    platformReceived: subscription.platform,
+    hasUserAgent: Boolean(subscription.user_agent),
+  });
+
   const validationError = validatePushSubscription(subscription);
   if (validationError) {
     response.status(400).json({ error: validationError });
     return;
   }
 
+  const metadataValidationError = validatePushSubscriptionMetadata(subscription);
+  if (metadataValidationError) {
+    response.status(400).json({ error: metadataValidationError });
+    return;
+  }
+
   try {
-    const saved = await upsertPushSubscription(supabase, subscription, { selectResult: Boolean(supabaseAdmin) });
+    const saved = await upsertPushSubscription(supabase, subscription);
+    const verified = await verifyPushSubscriptionSaved(supabase, subscription.endpoint);
+
+    if (!verified?.endpoint) {
+      throw new Error('Push subscription upsert completed, but exact endpoint verification failed.');
+    }
+
     response.status(200).json({
       ok: true,
       endpoint: saved.endpoint,
       deviceId: subscription.device_id,
+      device_id: subscription.device_id,
       platform: subscription.platform,
       userAgentSaved: Boolean(subscription.user_agent),
-      verified: Boolean(supabaseAdmin),
+      user_agent_saved: Boolean(subscription.user_agent),
+      verified: true,
+      lastSeenAt: verified.last_seen_at || null,
+      updatedAt: verified.updated_at || null,
     });
   } catch (error) {
     console.error('[PushNotifications] failed to save push subscription:', error);

@@ -3,12 +3,29 @@ import { createClient } from '@supabase/supabase-js';
 import webPush from 'web-push';
 
 export const MISSING_COLUMN_CODES = new Set(['42P01', '42703', 'PGRST204', 'PGRST205']);
+export const PUSH_PLATFORM_VALUES = new Set([
+  'ios-pwa',
+  'ios-safari',
+  'android-pwa',
+  'android-chrome',
+  'mac-safari',
+  'desktop-chrome',
+  'desktop-other',
+]);
 const DUPLICATE_KEY_CODE = '23505';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function debugPushServer(message, details) {
   if (IS_PRODUCTION) return;
+  if (typeof details === 'undefined') {
+    console.log(`[PushNotifications] ${message}`);
+    return;
+  }
+  console.log(`[PushNotifications] ${message}`, details);
+}
+
+export function logPushServer(message, details) {
   if (typeof details === 'undefined') {
     console.log(`[PushNotifications] ${message}`);
     return;
@@ -55,7 +72,6 @@ export function getSupabaseAdmin() {
 export function getSupabaseConfigStatus() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
   if (!url) {
     return {
@@ -64,31 +80,17 @@ export function getSupabaseConfigStatus() {
     };
   }
 
-  if (!serviceRoleKey && !anonKey) {
+  if (!serviceRoleKey) {
     return {
       ok: false,
-      reason: 'Supabase anon key missing. Add SUPABASE_ANON_KEY or VITE_SUPABASE_ANON_KEY on the server.',
+      reason: 'Supabase service role key missing. Add SUPABASE_SERVICE_ROLE_KEY on the server.',
     };
   }
 
   return {
     ok: true,
-    hasServiceRoleKey: Boolean(serviceRoleKey),
-    hasAnonKey: Boolean(anonKey),
+    hasServiceRoleKey: true,
   };
-}
-
-export function getSupabasePublicWriteClient() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const key = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-
-  if (!url || !key) return null;
-  return createClient(url, key, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  });
 }
 
 export function getVapidPublicKey() {
@@ -105,20 +107,20 @@ export function getVapidConfig() {
 }
 
 export function normalizeSubscription(body = {}, request) {
-  const source = body.subscription || body;
-  const keys = source.keys || body.keys || {};
-  const endpoint = source.endpoint || body.endpoint || '';
-  const p256dh = source.p256dh || body.p256dh || keys.p256dh || '';
-  const auth = source.auth || body.auth || keys.auth || '';
+  const source = body.subscription || {};
+  const keys = body.keys || source.keys || {};
+  const endpoint = body.endpoint || source.endpoint || '';
+  const p256dh = body.p256dh || keys.p256dh || source.p256dh || '';
+  const auth = body.auth || keys.auth || source.auth || '';
 
   return {
     endpoint,
     p256dh,
     auth,
-    user_agent: body.user_agent || body.userAgent || getHeader(request, 'user-agent') || '',
-    device_label: body.device_label || body.deviceLabel || '',
-    device_id: body.device_id || body.deviceId || '',
-    platform: body.platform || '',
+    user_agent: body.user_agent || body.userAgent || source.user_agent || source.userAgent || getHeader(request, 'user-agent') || '',
+    device_label: body.device_label || body.deviceLabel || source.device_label || source.deviceLabel || '',
+    device_id: body.device_id || body.deviceId || source.device_id || source.deviceId || '',
+    platform: body.platform || source.platform || '',
   };
 }
 
@@ -153,6 +155,34 @@ export function validatePushSubscription(subscription = {}) {
   return '';
 }
 
+export function validatePushSubscriptionMetadata(subscription = {}) {
+  const deviceId = String(subscription.device_id || '');
+  const platform = String(subscription.platform || '');
+  const userAgent = String(subscription.user_agent || '');
+
+  if (!deviceId) {
+    return 'Missing push subscription device_id.';
+  }
+
+  if (deviceId.length > 200) {
+    return 'Push subscription device_id is too long.';
+  }
+
+  if (!platform) {
+    return 'Missing push subscription platform.';
+  }
+
+  if (!PUSH_PLATFORM_VALUES.has(platform)) {
+    return 'Push subscription platform is invalid.';
+  }
+
+  if (!userAgent) {
+    return 'Missing push subscription user_agent.';
+  }
+
+  return '';
+}
+
 export async function upsertPushSubscription(supabase, subscription, { selectResult = true } = {}) {
   const now = new Date().toISOString();
   const record = {
@@ -168,15 +198,39 @@ export async function upsertPushSubscription(supabase, subscription, { selectRes
     is_active: true,
   };
 
+  logPushServer('push subscription upsert start', {
+    endpoint: subscription.endpoint,
+    deviceId: subscription.device_id,
+    platform: subscription.platform,
+    hasUserAgent: Boolean(subscription.user_agent),
+  });
+
   const query = supabase
     .from('push_subscriptions')
     .upsert(record, { onConflict: 'endpoint' });
 
   const result = selectResult
-    ? await query.select('endpoint').single()
+    ? await query.select('endpoint,device_id,platform,user_agent,is_active,last_seen_at,updated_at').single()
     : await query;
 
-  if (!result.error) return result.data || { endpoint: subscription.endpoint };
+  if (!result.error) {
+    logPushServer('push subscription upsert success', {
+      endpoint: result.data?.endpoint || subscription.endpoint,
+      deviceId: result.data?.device_id || subscription.device_id,
+      platform: result.data?.platform || subscription.platform,
+      hasUserAgent: Boolean(result.data?.user_agent || subscription.user_agent),
+      updatedAt: result.data?.updated_at || now,
+    });
+    return result.data || { endpoint: subscription.endpoint };
+  }
+
+  console.error('[PushNotifications] push subscription upsert failure:', {
+    endpoint: subscription.endpoint,
+    deviceId: subscription.device_id,
+    platform: subscription.platform,
+    errorCode: result.error.code,
+    errorMessage: result.error.message,
+  });
 
   if (MISSING_COLUMN_CODES.has(result.error.code)) {
     const schemaError = new Error('push_subscriptions table is missing metadata columns. Apply supabase-schema.sql, then resubscribe this device.');
@@ -186,6 +240,36 @@ export async function upsertPushSubscription(supabase, subscription, { selectRes
   }
 
   throw result.error;
+}
+
+export async function verifyPushSubscriptionSaved(supabase, endpoint) {
+  logPushServer('push subscription verification start', { endpoint });
+
+  const { data, error } = await supabase
+    .from('push_subscriptions')
+    .select('endpoint,is_active,last_seen_at,updated_at,device_id,platform,user_agent')
+    .eq('endpoint', endpoint)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[PushNotifications] push subscription verification failure:', {
+      endpoint,
+      errorCode: error.code,
+      errorMessage: error.message,
+    });
+    throw error;
+  }
+
+  logPushServer('push subscription verification success', {
+    endpoint,
+    saved: Boolean(data?.endpoint),
+    deviceId: data?.device_id || '',
+    platform: data?.platform || '',
+    hasUserAgent: Boolean(data?.user_agent),
+    updatedAt: data?.updated_at || null,
+  });
+
+  return data;
 }
 
 export async function deletePushSubscription(supabase, endpoint) {
