@@ -499,12 +499,21 @@ export async function sendPushPayloadToSubscriptions(supabase, payload, subscrip
     ? await createLineupNotificationRecords(supabase, payload, subscriptions, results)
     : 0;
 
+  const totalSubscriptions = subscriptions.length;
+  const successCount = results.filter((result) => result.status === 'fulfilled').length;
+  const failureCount = results.filter((result) => result.status === 'rejected').length;
+  const expiredRemovedCount = expiredEndpoints.length;
+
   const summary = {
     ok: true,
-    total: subscriptions.length,
-    sent: results.filter((result) => result.status === 'fulfilled').length,
-    failed: results.filter((result) => result.status === 'rejected').length,
-    expired: expiredEndpoints.length,
+    totalSubscriptions,
+    successCount,
+    failureCount,
+    expiredRemovedCount,
+    total: totalSubscriptions,
+    sent: successCount,
+    failed: failureCount,
+    expired: expiredRemovedCount,
     notificationRecords,
     deliveryLogs,
   };

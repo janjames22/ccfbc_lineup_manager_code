@@ -28,6 +28,16 @@ function formatEndpoint(endpoint) {
   return `${endpoint.slice(0, 18)}...${endpoint.slice(-12)}`;
 }
 
+function normalizePushSummary(result = {}) {
+  return {
+    totalSubscriptions: result.totalSubscriptions ?? result.total ?? 0,
+    successCount: result.successCount ?? result.sent ?? 0,
+    failureCount: result.failureCount ?? result.failed ?? 0,
+    expiredRemovedCount: result.expiredRemovedCount ?? result.expired ?? 0,
+    deliveryLogs: result.deliveryLogs ?? 0,
+  };
+}
+
 function DiagnosticRow({ label, value, tone = 'slate' }) {
   const color = tone === 'good' ? 'text-emerald-300' : tone === 'warn' ? 'text-amber-300' : 'text-slate-300';
 
@@ -147,7 +157,8 @@ export default function PhoneNotificationsButton() {
     try {
       const result = await sendTestPushNotification();
       await refreshDiagnostics();
-      setMessage(`Test push sent to ${result.sent || 0} device${result.sent === 1 ? '' : 's'}.`);
+      const summary = normalizePushSummary(result);
+      setMessage(`This-device test sent to ${summary.successCount} device${summary.successCount === 1 ? '' : 's'}. Delivery logs: ${summary.deliveryLogs}.`);
     } catch (error) {
       console.error('[PushNotifications] failed to send test notification:', error);
       await refreshHealth().catch(() => {});
@@ -164,7 +175,8 @@ export default function PhoneNotificationsButton() {
     try {
       const result = await sendTestPushNotificationToAllDevices();
       await refreshDiagnostics();
-      setMessage(`All-device test attempted ${result.total || 0} subscription${result.total === 1 ? '' : 's'}: ${result.sent || 0} sent, ${result.failed || 0} failed, ${result.expired || 0} expired. Delivery logs: ${result.deliveryLogs || 0}.`);
+      const summary = normalizePushSummary(result);
+      setMessage(`All-device test attempted ${summary.totalSubscriptions} subscription${summary.totalSubscriptions === 1 ? '' : 's'}: ${summary.successCount} sent, ${summary.failureCount} failed, ${summary.expiredRemovedCount} expired. Delivery logs: ${summary.deliveryLogs}.`);
     } catch (error) {
       console.error('[PushNotifications] failed to send all-device test notification:', error);
       setMessage(error?.message || 'Unable to send test notification to all devices.');
@@ -253,7 +265,7 @@ export default function PhoneNotificationsButton() {
         disabled={testBusy || !enabled}
       >
         <Send size={14} aria-hidden="true" />
-        {testBusy ? 'Sending test...' : 'Send test to this device'}
+        {testBusy ? 'Sending test...' : 'Send Test Push To This Device'}
       </button>
 
       <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
@@ -327,7 +339,7 @@ export default function PhoneNotificationsButton() {
             disabled={allTestBusy}
           >
             <Send size={14} aria-hidden="true" />
-            {allTestBusy ? 'Sending to all...' : 'Send Test to All Devices'}
+            {allTestBusy ? 'Sending to all...' : 'Send Test Push To All Devices'}
           </button>
           <button
             type="button"

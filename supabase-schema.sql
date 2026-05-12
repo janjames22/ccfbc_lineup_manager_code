@@ -188,6 +188,28 @@ ALTER TABLE public.push_delivery_logs
     ADD COLUMN IF NOT EXISTS error_message TEXT,
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
+ALTER TABLE public.push_delivery_logs
+    ALTER COLUMN created_at SET DEFAULT NOW();
+
+DO $$
+BEGIN
+    UPDATE public.push_delivery_logs
+    SET status = 'unknown'
+    WHERE status IS NULL;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'push_delivery_logs'
+          AND column_name = 'status'
+          AND is_nullable = 'YES'
+    ) THEN
+        ALTER TABLE public.push_delivery_logs
+            ALTER COLUMN status SET NOT NULL;
+    END IF;
+END $$;
+
 -- ============================================
 -- ROW LEVEL SECURITY
 -- ============================================

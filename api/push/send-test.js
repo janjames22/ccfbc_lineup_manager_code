@@ -41,7 +41,7 @@ export default async function handler(request, response) {
       result = await sendPushPayloadToSubscriptions(null, payload, [directSubscription]);
     }
 
-    if (targetEndpoint && result.total === 0) {
+    if (targetEndpoint && (result.totalSubscriptions ?? result.total ?? 0) === 0) {
       response.status(404).json({ ...result, error: 'No active push subscription found for this device.' });
       return;
     }

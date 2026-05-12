@@ -465,7 +465,9 @@ export async function sendTestPushNotification() {
     'Unable to send test notification.'
   );
 
-  if ((result.sent || 0) < 1) {
+  const successCount = result.successCount ?? result.sent ?? 0;
+
+  if (successCount < 1) {
     throw new Error('Test push was accepted, but no active subscription was reached.');
   }
 
@@ -488,7 +490,9 @@ export async function sendTestPushNotificationToAllDevices() {
     'Unable to send test notification to all devices.'
   );
 
-  if ((result.total || 0) < 1) {
+  const totalSubscriptions = result.totalSubscriptions ?? result.total ?? 0;
+
+  if (totalSubscriptions < 1) {
     throw new Error('No active push subscriptions were found.');
   }
 
