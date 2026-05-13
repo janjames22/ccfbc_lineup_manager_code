@@ -1,5 +1,6 @@
 import {
   allowMethods,
+  assertPushSubscriptionMetadataSaved,
   debugPushServer,
   getRequestBody,
   getSupabaseAdmin,
@@ -24,6 +25,22 @@ export default async function handler(request, response) {
   }
 
   const subscription = normalizeSubscription(getRequestBody(request), request);
+  const {
+    endpoint,
+    p256dh,
+    auth,
+    device_id,
+    platform,
+    user_agent,
+  } = subscription;
+  console.log('[push subscribe api] received', {
+    endpoint: endpoint ? endpoint.slice(0, 50) : null,
+    hasP256dh: Boolean(p256dh),
+    hasAuth: Boolean(auth),
+    device_id,
+    platform,
+    hasUserAgent: Boolean(user_agent),
+  });
   logPushServer('subscription save request received', {
     endpointReceived: subscription.endpoint,
     deviceIdReceived: subscription.device_id,
@@ -51,6 +68,7 @@ export default async function handler(request, response) {
     if (!verified?.endpoint) {
       throw new Error('Push subscription upsert completed, but exact endpoint verification failed.');
     }
+    assertPushSubscriptionMetadataSaved(verified, subscription);
 
     debugPushServer('subscription saved to Supabase', {
       endpoint: saved.endpoint,
@@ -60,10 +78,13 @@ export default async function handler(request, response) {
     });
     response.status(200).json({
       ok: true,
+      savedInSupabase: true,
       endpoint: saved.endpoint,
       deviceId: subscription.device_id,
       device_id: subscription.device_id,
       platform: subscription.platform,
+      user_agent: saved.user_agent || verified.user_agent || subscription.user_agent || null,
+      updated_at: saved.updated_at || verified.updated_at || null,
       userAgentSaved: Boolean(subscription.user_agent),
       user_agent_saved: Boolean(subscription.user_agent),
       verified: true,
@@ -87,6 +108,8 @@ export default async function handler(request, response) {
       },
       verification: {
         saved: Boolean(verified.endpoint),
+        metadata_saved: Boolean(verified.device_id && verified.platform && verified.user_agent),
+        metadataSaved: Boolean(verified.device_id && verified.platform && verified.user_agent),
         endpoint: verified.endpoint || '',
         device_id: verified.device_id || '',
         platform: verified.platform || '',
@@ -98,6 +121,16 @@ export default async function handler(request, response) {
     });
   } catch (error) {
     console.error('[PushNotifications] failed to save push subscription:', error);
+    if (error.code === 'PUSH_METADATA_NOT_SAVED') {
+      response.status(500).json({
+        error: error.message,
+        missing: error.details?.missing || [],
+        verification: error.details?.verified || null,
+        expected: error.details?.expected || null,
+      });
+      return;
+    }
+
     if (MISSING_COLUMN_CODES.has(error.code)) {
       response.status(500).json({ error: 'push_subscriptions table missing or outdated. Apply supabase-schema.sql in Supabase.' });
       return;

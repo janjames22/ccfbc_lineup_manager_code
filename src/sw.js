@@ -8,13 +8,15 @@ import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from 'workbox-strategi
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 import { ExpirationPlugin } from 'workbox-expiration';
 
-const BUILD_VERSION = typeof __APP_BUILD_VERSION__ === 'string' ? __APP_BUILD_VERSION__ : 'dev';
+const SW_VERSION = typeof __APP_BUILD_VERSION__ === 'string' ? __APP_BUILD_VERSION__ : 'sw-2026-05-13-push-metadata-save-fix-2';
+const CACHE_NAME = 'lineup-manager-2026-05-13-push-metadata-save-fix-2';
+const BUILD_VERSION = SW_VERSION;
 const CACHE_PREFIX = 'lineup-manager';
-const PRECACHE_SUFFIX = `precache-${BUILD_VERSION}`;
-const RUNTIME_SUFFIX = `runtime-${BUILD_VERSION}`;
-const APP_SHELL_CACHE = `${CACHE_PREFIX}-app-shell-${BUILD_VERSION}`;
-const STATIC_ASSET_CACHE = `${CACHE_PREFIX}-assets-${BUILD_VERSION}`;
-const IMAGE_CACHE = `${CACHE_PREFIX}-images-${BUILD_VERSION}`;
+const PRECACHE_SUFFIX = `precache-${SW_VERSION}`;
+const RUNTIME_SUFFIX = `runtime-${SW_VERSION}`;
+const APP_SHELL_CACHE = CACHE_NAME;
+const STATIC_ASSET_CACHE = `${CACHE_NAME}-assets`;
+const IMAGE_CACHE = `${CACHE_NAME}-images`;
 const CACHE_PREFIXES_TO_CLEAN = ['lineup-manager', 'workbox-precache', 'workbox-runtime'];
 const IS_DEV_HOST = ['localhost', '127.0.0.1', '[::1]'].includes(self.location.hostname);
 const IS_DEV_BUILD = BUILD_VERSION === 'dev' || IS_DEV_HOST;
@@ -434,7 +436,10 @@ self.addEventListener('activate', (event) => {
       const cacheNames = await caches.keys();
       const cachesToDelete = cacheNames.filter((cacheName) => {
         if (!CACHE_PREFIXES_TO_CLEAN.some((prefix) => cacheName.startsWith(prefix))) return false;
-        return !cacheName.includes(BUILD_VERSION);
+        const isCurrentCache = cacheName === CACHE_NAME
+          || cacheName.startsWith(`${CACHE_NAME}-`)
+          || cacheName.includes(SW_VERSION);
+        return !isCurrentCache;
       });
 
       await Promise.all(cachesToDelete.map((cacheName) => caches.delete(cacheName)));

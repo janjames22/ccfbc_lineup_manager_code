@@ -78,6 +78,16 @@ function createFallbackDeviceId(endpoint = '', userAgent = '') {
   return `server-${hash}`;
 }
 
+function firstTextValue(...values) {
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+
+  return null;
+}
+
 export function allowMethods(request, response, methods) {
   if (methods.includes(request.method)) return true;
   response.setHeader('Allow', methods.join(', '));
@@ -137,13 +147,38 @@ export function getVapidConfig() {
 
 export function normalizeSubscription(body = {}, request) {
   const source = body.subscription || {};
+  const metadata = body.metadata || source.metadata || {};
+  const device = body.device || source.device || {};
   const keys = body.keys || source.keys || {};
-  const endpoint = body.endpoint || source.endpoint || '';
-  const p256dh = body.p256dh || keys.p256dh || source.p256dh || '';
-  const auth = body.auth || keys.auth || source.auth || '';
-  const userAgent = body.user_agent || body.userAgent || source.user_agent || source.userAgent || getHeader(request, 'user-agent') || null;
-  const requestedDeviceId = body.device_id || body.deviceId || source.device_id || source.deviceId || null;
-  const requestedPlatform = body.platform || source.platform || null;
+  const endpoint = firstTextValue(body.endpoint, source.endpoint) || '';
+  const p256dh = firstTextValue(body.p256dh, keys.p256dh, source.p256dh) || '';
+  const auth = firstTextValue(body.auth, keys.auth, source.auth) || '';
+  const userAgent = firstTextValue(
+    body.user_agent,
+    body.userAgent,
+    source.user_agent,
+    source.userAgent,
+    metadata.user_agent,
+    metadata.userAgent,
+    getHeader(request, 'user-agent')
+  );
+  const requestedDeviceId = firstTextValue(
+    body.device_id,
+    body.deviceId,
+    source.device_id,
+    source.deviceId,
+    metadata.device_id,
+    metadata.deviceId,
+    device.id,
+    device.device_id,
+    device.deviceId
+  );
+  const requestedPlatform = firstTextValue(
+    body.platform,
+    source.platform,
+    metadata.platform,
+    device.platform
+  );
   const deviceId = requestedDeviceId || (endpoint ? createFallbackDeviceId(endpoint, userAgent || '') : null);
   const platform = detectPlatformFromUserAgent(userAgent || '', requestedPlatform || '');
 
@@ -152,7 +187,17 @@ export function normalizeSubscription(body = {}, request) {
     p256dh,
     auth,
     user_agent: userAgent,
-    device_label: body.device_label || body.deviceLabel || source.device_label || source.deviceLabel || null,
+    device_label: firstTextValue(
+      body.device_label,
+      body.deviceLabel,
+      source.device_label,
+      source.deviceLabel,
+      metadata.device_label,
+      metadata.deviceLabel,
+      device.label,
+      device.device_label,
+      device.deviceLabel
+    ),
     device_id: deviceId,
     platform,
     metadata_source: {
@@ -160,6 +205,42 @@ export function normalizeSubscription(body = {}, request) {
       platform: requestedPlatform ? 'client' : 'server-fallback',
     },
   };
+}
+
+export function getPushSubscriptionMetadataStatus(row = {}) {
+  const missing = [];
+
+  if (!row?.device_id) missing.push('device_id');
+  if (!row?.platform) missing.push('platform');
+  if (!row?.user_agent) missing.push('user_agent');
+
+  return {
+    saved: missing.length === 0,
+    missing,
+  };
+}
+
+export function assertPushSubscriptionMetadataSaved(row = {}, subscription = {}) {
+  const status = getPushSubscriptionMetadataStatus(row);
+  if (status.saved) return;
+
+  const error = new Error(`Push subscription saved, but Supabase verification still has NULL metadata: ${status.missing.join(', ')}.`);
+  error.code = 'PUSH_METADATA_NOT_SAVED';
+  error.details = {
+    endpoint: row?.endpoint || subscription.endpoint || '',
+    missing: status.missing,
+    expected: {
+      device_id: subscription.device_id || '',
+      platform: subscription.platform || '',
+      user_agent_saved: Boolean(subscription.user_agent),
+    },
+    verified: {
+      device_id: row?.device_id || '',
+      platform: row?.platform || '',
+      user_agent_saved: Boolean(row?.user_agent),
+    },
+  };
+  throw error;
 }
 
 export function validatePushSubscription(subscription = {}) {
@@ -223,22 +304,22 @@ export function validatePushSubscriptionMetadata(subscription = {}) {
 
 export async function upsertPushSubscription(supabase, subscription, { selectResult = true } = {}) {
   const now = new Date().toISOString();
-  const record = {
+  const row = {
     endpoint: subscription.endpoint,
     p256dh: subscription.p256dh,
     auth: subscription.auth,
-    user_agent: subscription.user_agent || null,
+    device_id: subscription.device_id,
+    platform: subscription.platform,
+    user_agent: subscription.user_agent,
     device_label: subscription.device_label || null,
-    device_id: subscription.device_id || null,
-    platform: subscription.platform || null,
-    updated_at: now,
-    last_seen_at: now,
     is_active: true,
+    last_seen_at: now,
+    updated_at: now,
   };
   const loggedRecord = {
-    ...record,
-    p256dh: record.p256dh ? '[present]' : '[missing]',
-    auth: record.auth ? '[present]' : '[missing]',
+    ...row,
+    p256dh: row.p256dh ? '[present]' : '[missing]',
+    auth: row.auth ? '[present]' : '[missing]',
   };
 
   logPushServer('push subscription upsert start', {
@@ -251,7 +332,9 @@ export async function upsertPushSubscription(supabase, subscription, { selectRes
 
   const upsertResult = await supabase
     .from('push_subscriptions')
-    .upsert(record, { onConflict: 'endpoint', ignoreDuplicates: false });
+    .upsert(row, { onConflict: 'endpoint' })
+    .select()
+    .single();
 
   if (upsertResult.error) {
     console.error('[PushNotifications] push subscription upsert failure:', {
@@ -273,11 +356,12 @@ export async function upsertPushSubscription(supabase, subscription, { selectRes
   }
 
   logPushServer('push subscription upsert success', {
-    endpoint: subscription.endpoint,
-    deviceId: subscription.device_id,
-    platform: subscription.platform,
-    hasUserAgent: Boolean(subscription.user_agent),
-    updatedAt: now,
+    endpoint: upsertResult.data?.endpoint || subscription.endpoint,
+    deviceId: upsertResult.data?.device_id || '',
+    platform: upsertResult.data?.platform || '',
+    hasUserAgent: Boolean(upsertResult.data?.user_agent),
+    updatedAt: upsertResult.data?.updated_at || now,
+    metadata: getPushSubscriptionMetadataStatus(upsertResult.data),
   });
 
   if (!selectResult) {
@@ -292,7 +376,7 @@ export async function upsertPushSubscription(supabase, subscription, { selectRes
     };
   }
 
-  const { endpoint, ...updateRecord } = record;
+  const { endpoint, ...updateRecord } = row;
   const updateResult = await supabase
     .from('push_subscriptions')
     .update(updateRecord)
@@ -325,6 +409,7 @@ export async function upsertPushSubscription(supabase, subscription, { selectRes
     platform: updateResult.data?.platform || '',
     hasUserAgent: Boolean(updateResult.data?.user_agent),
     updatedAt: updateResult.data?.updated_at || now,
+    metadata: getPushSubscriptionMetadataStatus(updateResult.data),
   });
 
   return updateResult.data;
@@ -355,6 +440,7 @@ export async function verifyPushSubscriptionSaved(supabase, endpoint) {
     platform: data?.platform || '',
     hasUserAgent: Boolean(data?.user_agent),
     updatedAt: data?.updated_at || null,
+    metadata: getPushSubscriptionMetadataStatus(data),
   });
 
   return data;

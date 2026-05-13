@@ -17,6 +17,7 @@ function readVersionInfo() {
 }
 
 const VERSION_INFO = readVersionInfo();
+const APP_VERSION = VERSION_INFO.version || 'dev';
 const BUILD_VERSION =
   VERSION_INFO.serviceWorkerVersion ||
   VERSION_INFO.version ||
@@ -25,6 +26,7 @@ const BUILD_VERSION =
 
 export default defineConfig({
   define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
     __APP_BUILD_VERSION__: JSON.stringify(BUILD_VERSION),
   },
   plugins: [

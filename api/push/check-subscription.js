@@ -1,6 +1,7 @@
 import {
   allowMethods,
   getRequestBody,
+  getPushSubscriptionMetadataStatus,
   getSupabaseAdmin,
   getSupabaseConfigStatus,
   logPushServer,
@@ -71,11 +72,18 @@ export default async function handler(request, response) {
     platform: data?.platform || '',
     hasUserAgent: Boolean(data?.user_agent),
     updatedAt: data?.updated_at || null,
+    metadata: getPushSubscriptionMetadataStatus(data),
   });
+
+  const metadata = getPushSubscriptionMetadataStatus(data);
 
   response.status(200).json({
     ok: true,
     saved: Boolean(data?.endpoint),
+    metadataSaved: metadata.saved,
+    metadata_saved: metadata.saved,
+    metadataMissing: metadata.missing,
+    metadata_missing: metadata.missing,
     active: Boolean(data?.endpoint) && data?.is_active !== false,
     endpoint: data?.endpoint || endpoint,
     deviceId: data?.device_id || '',

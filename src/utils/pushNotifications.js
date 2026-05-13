@@ -1,4 +1,4 @@
-/* global __APP_BUILD_VERSION__ */
+/* global __APP_BUILD_VERSION__, __APP_VERSION__ */
 import { getMetadata, NOTIFICATION_METADATA_KEYS } from './indexedDbNotifications';
 
 const PUSH_SUBSCRIPTION_ENDPOINT_KEY = 'lineupManagerPushSubscriptionEndpoint';
@@ -8,7 +8,7 @@ const STABLE_PRODUCTION_HOST = 'ccfbc-lineup-manager-code.vercel.app';
 const API_BASE = '/api/push';
 const IS_DEV = import.meta.env.DEV;
 const BUILD_VERSION = typeof __APP_BUILD_VERSION__ === 'string' ? __APP_BUILD_VERSION__ : 'dev';
-const APP_VERSION = import.meta.env.VITE_APP_VERSION || BUILD_VERSION;
+const APP_VERSION = import.meta.env.VITE_APP_VERSION || (typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : BUILD_VERSION);
 
 let cachedVapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
 
@@ -207,20 +207,66 @@ async function saveSubscriptionToServer(subscription) {
   const device_label = getDeviceLabel();
   const payload = {
     endpoint,
+    p256dh,
+    auth,
     keys: {
       p256dh,
       auth,
     },
     device_id,
+    deviceId: device_id,
     platform,
     user_agent,
+    userAgent: user_agent,
     device_label,
+    deviceLabel: device_label,
+    subscription: {
+      endpoint,
+      p256dh,
+      auth,
+      keys: {
+        p256dh,
+        auth,
+      },
+      device_id,
+      deviceId: device_id,
+      platform,
+      user_agent,
+      userAgent: user_agent,
+      device_label,
+      deviceLabel: device_label,
+    },
   };
   const loggedPayload = {
-    ...payload,
+    endpoint,
+    p256dh: p256dh ? '[present]' : '[missing]',
+    auth: auth ? '[present]' : '[missing]',
     keys: {
       p256dh: p256dh ? '[present]' : '[missing]',
       auth: auth ? '[present]' : '[missing]',
+    },
+    device_id,
+    deviceId: device_id,
+    platform,
+    user_agent,
+    userAgent: user_agent,
+    device_label,
+    deviceLabel: device_label,
+    subscription: {
+      endpoint,
+      p256dh: p256dh ? '[present]' : '[missing]',
+      auth: auth ? '[present]' : '[missing]',
+      keys: {
+        p256dh: p256dh ? '[present]' : '[missing]',
+        auth: auth ? '[present]' : '[missing]',
+      },
+      device_id,
+      deviceId: device_id,
+      platform,
+      user_agent,
+      userAgent: user_agent,
+      device_label,
+      deviceLabel: device_label,
     },
   };
 
@@ -234,8 +280,10 @@ async function saveSubscriptionToServer(subscription) {
     navigatorPlatform: navigator.platform || '',
     standalone: isStandalonePwa(),
   });
+  logPush('current device_id', { device_id, storageKey: DEVICE_ID_KEY });
   logPush('current endpoint', { endpoint });
   logPush('payload sent to API', loggedPayload);
+  console.info('[PushNotifications] RESUBSCRIBE_THIS_DEVICE payload sent to /api/push/subscribe', loggedPayload);
   debugPush('saving subscription through API', {
     endpoint,
     deviceId: device_id,
@@ -255,14 +303,28 @@ async function saveSubscriptionToServer(subscription) {
   );
 
   debugPush('API save response', result);
+  const verifiedDeviceId = result?.verification?.device_id || result?.upserted?.device_id || result?.device_id || result?.deviceId || '';
+  const verifiedPlatform = result?.verification?.platform || result?.upserted?.platform || result?.platform || '';
+  if (!verifiedDeviceId || !verifiedPlatform) {
+    console.warn('[PushNotifications] Supabase save response did not verify metadata:', {
+      endpoint,
+      sentDeviceId: device_id,
+      sentPlatform: platform,
+      verifiedDeviceId,
+      verifiedPlatform,
+      result,
+    });
+  }
   storePushSubscriptionEndpoint(endpoint);
   return {
     ...result,
     sent: {
       endpoint,
       device_id,
+      deviceId: device_id,
       platform,
       user_agent_saved: Boolean(user_agent),
+      userAgentSaved: Boolean(user_agent),
     },
   };
 }
@@ -675,6 +737,7 @@ export async function getNotificationDiagnostics({ refreshServer = false, ensure
       exists: Boolean(subscription),
       endpoint: subscription?.endpoint || '',
       savedInSupabase: Boolean(serverSubscription?.saved),
+      metadataSavedInSupabase: Boolean(serverSubscription?.metadataSaved || serverSubscription?.metadata_saved),
       activeInSupabase: Boolean(serverSubscription?.saved) && serverSubscription?.active !== false,
       saveCheckUnavailable: Boolean(serverSubscription?.checkUnavailable),
       serverDeviceId: serverSubscription?.deviceId || serverSubscription?.device_id || '',

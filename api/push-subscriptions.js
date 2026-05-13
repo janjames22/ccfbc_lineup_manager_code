@@ -1,5 +1,6 @@
 import {
   allowMethods,
+  assertPushSubscriptionMetadataSaved,
   getRequestBody,
   getSupabaseAdmin,
   getSupabaseConfigStatus,
@@ -50,6 +51,7 @@ export default async function handler(request, response) {
     if (!verified?.endpoint) {
       throw new Error('Push subscription upsert completed, but exact endpoint verification failed.');
     }
+    assertPushSubscriptionMetadataSaved(verified, subscription);
 
     response.status(200).json({
       ok: true,
@@ -80,6 +82,8 @@ export default async function handler(request, response) {
       },
       verification: {
         saved: Boolean(verified.endpoint),
+        metadata_saved: Boolean(verified.device_id && verified.platform && verified.user_agent),
+        metadataSaved: Boolean(verified.device_id && verified.platform && verified.user_agent),
         endpoint: verified.endpoint || '',
         device_id: verified.device_id || '',
         platform: verified.platform || '',
@@ -91,6 +95,16 @@ export default async function handler(request, response) {
     });
   } catch (error) {
     console.error('[PushNotifications] failed to save push subscription:', error);
+    if (error.code === 'PUSH_METADATA_NOT_SAVED') {
+      response.status(500).json({
+        error: error.message,
+        missing: error.details?.missing || [],
+        verification: error.details?.verified || null,
+        expected: error.details?.expected || null,
+      });
+      return;
+    }
+
     if (MISSING_COLUMN_CODES.has(error.code)) {
       response.status(500).json({ error: 'push_subscriptions table missing or outdated. Apply supabase-schema.sql in Supabase.' });
       return;

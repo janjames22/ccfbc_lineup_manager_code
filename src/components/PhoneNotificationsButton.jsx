@@ -128,8 +128,23 @@ export default function PhoneNotificationsButton() {
       setLastSaveResult(result?.saveResult || null);
       const nextDiagnostics = await refreshDiagnostics({ ensureRegistration: true, refreshServer: true });
       const sent = result?.saveResult?.sent || result?.saveResult?.received || {};
-      const saved = result?.saveResult?.verification?.saved || nextDiagnostics?.subscription?.savedInSupabase;
-      setMessage(`${result?.message || 'Device resubscribed for phone notifications.'} device_id: ${sent.device_id || 'missing'}, platform: ${sent.platform || 'missing'}, saved in Supabase: ${saved ? 'yes' : 'no'}.`);
+      const verification = result?.saveResult?.verification || {};
+      const saved = verification.saved || nextDiagnostics?.subscription?.savedInSupabase;
+      const serverDeviceId = result?.saveResult?.device_id
+        || verification.device_id
+        || nextDiagnostics?.subscription?.serverDeviceId
+        || '';
+      const serverPlatform = result?.saveResult?.platform
+        || verification.platform
+        || nextDiagnostics?.subscription?.serverPlatform
+        || '';
+      setMessage([
+        `Sent device_id: ${sent.device_id || sent.deviceId || 'missing'}`,
+        `Sent platform: ${sent.platform || 'missing'}`,
+        `Server saved device_id: ${serverDeviceId || 'missing'}`,
+        `Server saved platform: ${serverPlatform || 'missing'}`,
+        `Saved in Supabase: ${saved ? 'Yes' : 'No'}`,
+      ].join('\n'));
     } catch (error) {
       console.error('[PushNotifications] failed to resubscribe device:', error);
       setLastSaveResult({ error: error?.message || 'Unable to resubscribe this device.' });
@@ -311,6 +326,11 @@ export default function PhoneNotificationsButton() {
             value={subscriptionStatus?.saveCheckUnavailable ? 'Cannot verify' : subscriptionStatus?.savedInSupabase}
             tone={subscriptionStatus?.savedInSupabase ? 'good' : 'warn'}
           />
+          <DiagnosticRow
+            label="Metadata saved"
+            value={subscriptionStatus?.saveCheckUnavailable ? 'Cannot verify' : subscriptionStatus?.metadataSavedInSupabase}
+            tone={subscriptionStatus?.metadataSavedInSupabase ? 'good' : 'warn'}
+          />
           <DiagnosticRow label="Device ID" value={app?.deviceId} />
           <DiagnosticRow label="Push platform" value={app?.platform} />
           <DiagnosticRow label="Supabase device ID" value={subscriptionStatus?.serverDeviceId} tone={subscriptionStatus?.serverDeviceId ? 'good' : 'warn'} />
@@ -373,7 +393,7 @@ export default function PhoneNotificationsButton() {
         </div>
       </div>
 
-      {message && <p className="text-xs font-semibold text-slate-300">{message}</p>}
+      {message && <p className="whitespace-pre-line text-xs font-semibold text-slate-300">{message}</p>}
     </div>
   );
 }
