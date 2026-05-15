@@ -4,8 +4,10 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import TeamAssignments from '../components/TeamAssignments';
 import ChordChartViewer from '../components/ChordChartViewer';
-import { deleteLineup, getLineupById, getSongs, saveLineup } from '../utils/storage';
+import OfflineItemButton from '../components/OfflineItemButton';
+import { createOfflineLineupPayload, deleteLineup, getLineupById, getSongs, saveLineup } from '../utils/storage';
 import { useToast } from '../hooks/useToast';
+import { useOfflineItems } from '../hooks/useOfflineItems';
 import { getSemitoneDelta, transposeChords, getTransposedKey } from '../utils/transposeChords';
 
 export default function LineupView() {
@@ -16,6 +18,7 @@ export default function LineupView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const { showToast } = useToast();
+  const offlineLineups = useOfflineItems('lineup');
 
   useEffect(() => {
     async function loadData() {
@@ -105,6 +108,12 @@ export default function LineupView() {
             <Link className="btn-secondary" to={`/lineups/${lineup.id}/print`}><Printer size={18} aria-hidden="true" /> Print</Link>
             <Link className="btn-secondary" to={`/lineups/${lineup.id}/edit`}><Pencil size={18} aria-hidden="true" /> Edit</Link>
             <button className="btn-danger" type="button" onClick={remove}><Trash2 size={18} aria-hidden="true" /> Delete</button>
+            <OfflineItemButton
+              item={lineup}
+              offline={offlineLineups}
+              type="lineup"
+              getSavePayload={createOfflineLineupPayload}
+            />
           </>
         }
       />
@@ -112,7 +121,8 @@ export default function LineupView() {
       <section className="grid gap-6 lg:grid-cols-[1fr_0.75fr]">
         <div className="space-y-4">
           {lineup.songs.map((lineupSong, index) => {
-            const song = songsMap[lineupSong.id || lineupSong.songId];
+            const embeddedSong = lineupSong.song || (lineupSong.chordChart ? lineupSong : null);
+            const song = songsMap[lineupSong.id || lineupSong.songId] || embeddedSong;
             const delta = song ? getSemitoneDelta(song.originalKey, lineupSong.selectedKey) : 0;
             return (
               <article key={`${lineupSong.id || lineupSong.songId}-${index}`} className="panel flex flex-col gap-4">

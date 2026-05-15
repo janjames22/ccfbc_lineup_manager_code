@@ -1,11 +1,18 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { emptyMusicians } from './constants';
-import { getOfflineSongs, saveSongsOffline, getOfflineLineups, saveLineupsOffline } from './offlineSync';
+import {
+  getOfflineLineupById,
+  getOfflineLineups,
+  getOfflineSongById,
+  getOfflineSongs,
+} from './offlineSync';
 import { markLineupCreatedLocally } from './lineupNotifications';
 import { sendLineupPushNotification } from './pushNotifications';
 
 const SONGS_KEY = 'worshipSongs';
 const LINEUPS_KEY = 'worshipLineups';
+const LIVE_SONGS_CACHE_KEY = 'worshipSongsLiveCache';
+const LIVE_LINEUPS_CACHE_KEY = 'worshipLineupsLiveCache';
 const SUPABASE_TIMEOUT_MS = 10000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DEFAULT_LYRICS_MONITOR_THEME = 'Dark Void';
@@ -135,7 +142,7 @@ export function normalizeLyricsMonitor(lyricsMonitor) {
 }
 
 // Convert camelCase app fields to snake_case Supabase columns
-function toSnakeCaseSong(song) {
+export function toSnakeCaseSong(song) {
   const normalizedLyricsMonitor = normalizeLyricsMonitor(song.lyricsMonitor);
   const payload = {
     title: toSafeString(song.title, '').trim(),
@@ -160,7 +167,7 @@ function toSnakeCaseSong(song) {
   return payload;
 }
 
-function toSnakeCaseLineup(lineup) {
+export function toSnakeCaseLineup(lineup) {
   const payload = {
     date: lineup.date || '',
     service_time: lineup.serviceTime || '9:00 AM',
@@ -180,7 +187,7 @@ function toSnakeCaseLineup(lineup) {
 }
 
 // Convert snake_case Supabase columns to camelCase app fields
-function toCamelCaseSong(dbSong) {
+export function toCamelCaseSong(dbSong) {
   if (!dbSong) return null;
   const lyricsMonitor = typeof dbSong.lyrics_monitor === 'string'
     ? safeParse(dbSong.lyrics_monitor, [])
@@ -204,7 +211,7 @@ function toCamelCaseSong(dbSong) {
   });
 }
 
-function toCamelCaseLineup(dbLineup) {
+export function toCamelCaseLineup(dbLineup) {
   if (!dbLineup) return null;
   const songs = typeof dbLineup.songs === 'string'
     ? safeParse(dbLineup.songs, [])
@@ -276,6 +283,41 @@ function write(key, value) {
     console.error(`Failed to write ${key} to localStorage:`, error);
   }
   return value;
+}
+
+function readLiveCache(key, fallback = []) {
+  const items = read(key, fallback);
+  return Array.isArray(items) ? items : fallback;
+}
+
+function writeLiveCache(key, value) {
+  return write(key, Array.isArray(value) ? value : []);
+}
+
+function getLiveCachedSongs() {
+  return readLiveCache(LIVE_SONGS_CACHE_KEY, [])
+    .map(normalizeSong)
+    .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+function saveLiveSongsCache(songs) {
+  return writeLiveCache(
+    LIVE_SONGS_CACHE_KEY,
+    (Array.isArray(songs) ? songs : []).map(normalizeSong)
+  );
+}
+
+function getLiveCachedLineups() {
+  return readLiveCache(LIVE_LINEUPS_CACHE_KEY, [])
+    .map(normalizeLineup)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+function saveLiveLineupsCache(lineups) {
+  return writeLiveCache(
+    LIVE_LINEUPS_CACHE_KEY,
+    (Array.isArray(lineups) ? lineups : []).map(normalizeLineup)
+  );
 }
 
 function getLocalSongs() {
@@ -362,11 +404,11 @@ export function normalizeSong(song = {}) {
     lyricsMonitorTheme: toSafeString(song.lyricsMonitorTheme, DEFAULT_LYRICS_MONITOR_THEME) || DEFAULT_LYRICS_MONITOR_THEME,
     notes: toSafeString(song.notes, ''),
     createdAt: song.createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    updatedAt: song.updatedAt || new Date().toISOString(),
   };
 }
 
-function normalizeLineup(lineup) {
+export function normalizeLineup(lineup = {}) {
   return {
     id: lineup.id || uid('lineup'),
     date: lineup.date || '',
@@ -376,7 +418,7 @@ function normalizeLineup(lineup) {
     musicians: { ...emptyMusicians(), ...(lineup.musicians || {}) },
     generalNotes: lineup.generalNotes || '',
     createdAt: lineup.createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    updatedAt: lineup.updatedAt || new Date().toISOString(),
   };
 }
 
@@ -386,10 +428,13 @@ function normalizeLineup(lineup) {
 
 export async function getSongs() {
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    console.log('App is offline, loading songs from offline cache');
+    console.log('App is offline, loading explicitly saved songs from offline cache');
     const offlineSongs = await getOfflineSongs();
-    if (offlineSongs && offlineSongs.length > 0) return offlineSongs.map(normalizeSong);
-    return getLocalSongs();
+    if (offlineSongs && offlineSongs.length > 0) {
+      return offlineSongs.map(normalizeSong).sort((a, b) => a.title.localeCompare(b.title));
+    }
+    if (!isSupabaseConfigured()) return getLocalSongs();
+    return [];
   }
 
   // Try Supabase first
@@ -406,14 +451,18 @@ export async function getSongs() {
       
       if (error) {
         console.error('Supabase getSongs error:', error.message);
+        const cachedSongs = getLiveCachedSongs();
+        if (cachedSongs.length) return cachedSongs;
       } else if (Array.isArray(data)) {
         console.log('Songs loaded from Supabase:', data.length);
         const camelSongs = data.map(toCamelCaseSong).filter(Boolean);
-        saveSongsOffline(camelSongs).catch(console.error);
+        saveLiveSongsCache(camelSongs);
         return camelSongs;
       }
     } catch (err) {
       console.error('Supabase getSongs failed:', err);
+      const cachedSongs = getLiveCachedSongs();
+      if (cachedSongs.length) return cachedSongs;
     }
   } else {
     console.log('Supabase not configured, using localStorage fallback for getSongs');
@@ -427,9 +476,9 @@ export async function getSongById(id) {
   if (!id) return null;
 
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    const offlineSongs = await getOfflineSongs();
-    const offlineMatch = offlineSongs?.find((song) => song?.id === id);
+    const offlineMatch = await getOfflineSongById(id);
     if (offlineMatch) return normalizeSong(offlineMatch);
+    if (isSupabaseConfigured()) return null;
     const localMatch = getLocalSongs().find((song) => song.id === id);
     return localMatch ? normalizeSong(localMatch) : null;
   }
@@ -453,6 +502,8 @@ export async function getSongById(id) {
       }
     } catch (err) {
       console.error('Supabase getSongById failed:', err);
+      const cachedMatch = getLiveCachedSongs().find((song) => song.id === id);
+      if (cachedMatch) return normalizeSong(cachedMatch);
     }
   }
   
@@ -517,7 +568,13 @@ export async function saveSong(song) {
         throw new Error(result.error.message);
       } else if (result.data) {
         console.log('Supabase saved song:', result.data);
-        return toCamelCaseSong(result.data);
+        const savedSong = toCamelCaseSong(result.data);
+        const cachedSongs = getLiveCachedSongs();
+        const nextCache = cachedSongs.some((item) => item.id === savedSong.id)
+          ? cachedSongs.map((item) => (item.id === savedSong.id ? savedSong : item))
+          : [savedSong, ...cachedSongs];
+        saveLiveSongsCache(nextCache);
+        return savedSong;
       }
     } catch (err) {
       console.error('Supabase saveSong failed:', err);
@@ -554,6 +611,7 @@ export async function deleteSong(id) {
   
   // Always fallback to localStorage as well
   deleteLocalSong(id);
+  saveLiveSongsCache(getLiveCachedSongs().filter((song) => song.id !== id));
   return true;
 }
 
@@ -563,10 +621,13 @@ export async function deleteSong(id) {
 
 export async function getLineups() {
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    console.log('App is offline, loading lineups from offline cache');
+    console.log('App is offline, loading explicitly saved lineups from offline cache');
     const offlineLineups = await getOfflineLineups();
-    if (offlineLineups && offlineLineups.length > 0) return offlineLineups;
-    return getLocalLineups();
+    if (offlineLineups && offlineLineups.length > 0) {
+      return offlineLineups.map(normalizeLineup).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    }
+    if (!isSupabaseConfigured()) return getLocalLineups();
+    return [];
   }
 
   // Try Supabase first
@@ -582,14 +643,18 @@ export async function getLineups() {
       
       if (error) {
         console.error('Supabase getLineups error:', error.message);
+        const cachedLineups = getLiveCachedLineups();
+        if (cachedLineups.length) return cachedLineups;
       } else if (Array.isArray(data)) {
         console.log("Loaded lineups:", data);
         const camelLineups = data.map(toCamelCaseLineup).filter(Boolean);
-        saveLineupsOffline(camelLineups).catch(console.error);
+        saveLiveLineupsCache(camelLineups);
         return camelLineups;
       }
     } catch (err) {
       console.error('Supabase getLineups failed:', err);
+      const cachedLineups = getLiveCachedLineups();
+      if (cachedLineups.length) return cachedLineups;
     }
   }
   
@@ -602,12 +667,12 @@ export async function getLineups() {
 export async function getLineupById(id) {
   if (!id) return null;
 
-  const localMatch = getLocalLineups().find((lineup) => lineup.id === id);
-  if (localMatch) return normalizeLineup(localMatch);
-
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    const offlineLineups = await getOfflineLineups();
-    return offlineLineups?.find((lineup) => lineup.id === id) || localMatch || null;
+    const offlineMatch = await getOfflineLineupById(id);
+    if (offlineMatch) return normalizeLineup(offlineMatch);
+    if (isSupabaseConfigured()) return null;
+    const localMatch = getLocalLineups().find((lineup) => lineup.id === id);
+    return localMatch ? normalizeLineup(localMatch) : null;
   }
 
   // Try Supabase first
@@ -626,15 +691,22 @@ export async function getLineupById(id) {
         console.error('Supabase getLineupById error:', error.message);
       } else if (data) {
         const lineup = toCamelCaseLineup(data);
-        saveLocalLineup(lineup);
+        const cachedLineups = getLiveCachedLineups();
+        const nextCache = cachedLineups.some((item) => item.id === lineup.id)
+          ? cachedLineups.map((item) => (item.id === lineup.id ? lineup : item))
+          : [lineup, ...cachedLineups];
+        saveLiveLineupsCache(nextCache);
         return lineup;
       }
     } catch (err) {
       console.error('Supabase getLineupById failed:', err);
+      const cachedMatch = getLiveCachedLineups().find((lineup) => lineup.id === id);
+      if (cachedMatch) return normalizeLineup(cachedMatch);
     }
   }
   
   // Fallback to localStorage
+  const localMatch = getLocalLineups().find((lineup) => lineup.id === id);
   return localMatch || null;
 }
 
@@ -696,6 +768,11 @@ export async function saveLineup(lineup) {
       } else if (result.data) {
         debugStorage("Saved lineup result:", result.data);
         const savedLineup = toCamelCaseLineup(result.data);
+        const cachedLineups = getLiveCachedLineups();
+        const nextCache = cachedLineups.some((item) => item.id === savedLineup.id)
+          ? cachedLineups.map((item) => (item.id === savedLineup.id ? savedLineup : item))
+          : [savedLineup, ...cachedLineups];
+        saveLiveLineupsCache(nextCache);
         if (!existing && result.data.id) {
           markLineupCreatedLocally(result.data.id);
           sendLineupPushNotification(savedLineup).catch((error) => {
@@ -737,6 +814,7 @@ export async function deleteLineup(id) {
   
   // Always fallback to localStorage as well
   deleteLocalLineup(id);
+  saveLiveLineupsCache(getLiveCachedLineups().filter((lineup) => lineup.id !== id));
   return true;
 }
 
@@ -746,4 +824,38 @@ export async function getUpcomingLineup() {
   return lineups
     .filter((lineup) => lineup.date >= today)
     .sort((a, b) => a.date.localeCompare(b.date))[0] || null;
+}
+
+export async function createOfflineLineupPayload(lineup) {
+  const normalizedLineup = normalizeLineup(lineup);
+  const uniqueSongIds = [
+    ...new Set(normalizedLineup.songs.map((song) => song.id || song.songId).filter(Boolean)),
+  ];
+
+  const songsById = {};
+  await Promise.all(uniqueSongIds.map(async (songId) => {
+    const song = await getSongById(songId).catch((error) => {
+      console.error(`Failed to load song ${songId} for offline lineup payload:`, error);
+      return null;
+    });
+    if (song) songsById[songId] = normalizeSong(song);
+  }));
+
+  return {
+    ...normalizedLineup,
+    songs: normalizedLineup.songs.map((lineupSong) => {
+      const songId = lineupSong.id || lineupSong.songId;
+      const fullSong = songsById[songId] || null;
+      return {
+        ...lineupSong,
+        song: fullSong,
+        artist: lineupSong.artist || fullSong?.artist || '',
+        originalKey: lineupSong.originalKey || fullSong?.originalKey || 'C',
+        selectedKey: lineupSong.selectedKey || fullSong?.selectedKey || fullSong?.originalKey || 'C',
+        chordChart: fullSong?.chordChart || lineupSong.chordChart || '',
+        lyricsMonitor: fullSong?.lyricsMonitor || lineupSong.lyricsMonitor || [],
+        youtubeLink: fullSong?.youtubeLink || lineupSong.youtubeLink || '',
+      };
+    }),
+  };
 }

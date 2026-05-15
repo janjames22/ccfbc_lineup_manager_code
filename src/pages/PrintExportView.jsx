@@ -73,7 +73,8 @@ export default function PrintExportView() {
         <h2 className="print-accent text-2xl font-bold tracking-tight text-slate-950">Song Lineup</h2>
         <div className="mt-4 space-y-6">
           {lineup.songs.map((lineupSong, index) => {
-            const song = songsMap[lineupSong.id || lineupSong.songId];
+            const embeddedSong = lineupSong.song || (lineupSong.chordChart ? lineupSong : null);
+            const song = songsMap[lineupSong.id || lineupSong.songId] || embeddedSong;
             const delta = song ? getSemitoneDelta(song.originalKey, lineupSong.selectedKey) : 0;
             return (
               <article key={`${lineupSong.id || lineupSong.songId}-${index}`} className="print-item print-divider break-inside-avoid border-b border-slate-200 pb-6">

@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import webPush from 'web-push';
 
 export const MISSING_COLUMN_CODES = new Set(['42P01', '42703', 'PGRST204', 'PGRST205']);
+const MISSING_RPC_CODES = new Set(['42883', 'PGRST202']);
 export const PUSH_PLATFORM_VALUES = new Set([
   'ios-pwa',
   'ios-safari',
@@ -16,6 +17,12 @@ export const PUSH_PLATFORM_VALUES = new Set([
 const DUPLICATE_KEY_CODE = '23505';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isMissingRpcError(error) {
+  return MISSING_RPC_CODES.has(error?.code)
+    || /could not find the function/i.test(error?.message || '')
+    || /function .* does not exist/i.test(error?.message || '');
+}
 
 export function debugPushServer(message, details) {
   if (IS_PRODUCTION) return;
@@ -179,8 +186,26 @@ export function normalizeSubscription(body = {}, request) {
     metadata.platform,
     device.platform
   );
+  const requestedAppVersion = firstTextValue(
+    body.app_version,
+    body.appVersion,
+    source.app_version,
+    source.appVersion,
+    metadata.app_version,
+    metadata.appVersion
+  );
+  const requestedServiceWorkerVersion = firstTextValue(
+    body.service_worker_version,
+    body.serviceWorkerVersion,
+    source.service_worker_version,
+    source.serviceWorkerVersion,
+    metadata.service_worker_version,
+    metadata.serviceWorkerVersion
+  );
   const deviceId = requestedDeviceId || (endpoint ? createFallbackDeviceId(endpoint, userAgent || '') : null);
   const platform = detectPlatformFromUserAgent(userAgent || '', requestedPlatform || '');
+  const appVersion = requestedAppVersion || process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) || 'server-unknown';
+  const serviceWorkerVersion = requestedServiceWorkerVersion || appVersion;
 
   return {
     endpoint,
@@ -200,9 +225,13 @@ export function normalizeSubscription(body = {}, request) {
     ),
     device_id: deviceId,
     platform,
+    app_version: appVersion,
+    service_worker_version: serviceWorkerVersion,
     metadata_source: {
       device_id: requestedDeviceId ? 'client' : 'server-fallback',
       platform: requestedPlatform ? 'client' : 'server-fallback',
+      app_version: requestedAppVersion ? 'client' : 'server-fallback',
+      service_worker_version: requestedServiceWorkerVersion ? 'client' : 'server-fallback',
     },
   };
 }
@@ -213,6 +242,8 @@ export function getPushSubscriptionMetadataStatus(row = {}) {
   if (!row?.device_id) missing.push('device_id');
   if (!row?.platform) missing.push('platform');
   if (!row?.user_agent) missing.push('user_agent');
+  if (!row?.app_version) missing.push('app_version');
+  if (!row?.service_worker_version) missing.push('service_worker_version');
 
   return {
     saved: missing.length === 0,
@@ -232,11 +263,15 @@ export function assertPushSubscriptionMetadataSaved(row = {}, subscription = {})
     expected: {
       device_id: subscription.device_id || '',
       platform: subscription.platform || '',
+      app_version: subscription.app_version || '',
+      service_worker_version: subscription.service_worker_version || '',
       user_agent_saved: Boolean(subscription.user_agent),
     },
     verified: {
       device_id: row?.device_id || '',
       platform: row?.platform || '',
+      app_version: row?.app_version || '',
+      service_worker_version: row?.service_worker_version || '',
       user_agent_saved: Boolean(row?.user_agent),
     },
   };
@@ -278,6 +313,8 @@ export function validatePushSubscriptionMetadata(subscription = {}) {
   const deviceId = String(subscription.device_id || '');
   const platform = String(subscription.platform || '');
   const userAgent = String(subscription.user_agent || '');
+  const appVersion = String(subscription.app_version || '');
+  const serviceWorkerVersion = String(subscription.service_worker_version || '');
 
   if (!deviceId) {
     return 'Missing push subscription device_id.';
@@ -299,6 +336,18 @@ export function validatePushSubscriptionMetadata(subscription = {}) {
     return 'Missing push subscription user_agent.';
   }
 
+  if (!appVersion) {
+    return 'Missing push subscription app_version.';
+  }
+
+  if (!serviceWorkerVersion) {
+    return 'Missing push subscription service_worker_version.';
+  }
+
+  if (appVersion.length > 200 || serviceWorkerVersion.length > 200) {
+    return 'Push subscription app or service worker version is too long.';
+  }
+
   return '';
 }
 
@@ -312,6 +361,8 @@ export async function upsertPushSubscription(supabase, subscription, { selectRes
     platform: subscription.platform,
     user_agent: subscription.user_agent,
     device_label: subscription.device_label || null,
+    app_version: subscription.app_version,
+    service_worker_version: subscription.service_worker_version,
     is_active: true,
     last_seen_at: now,
     updated_at: now,
@@ -327,8 +378,52 @@ export async function upsertPushSubscription(supabase, subscription, { selectRes
     deviceId: subscription.device_id,
     platform: subscription.platform,
     hasUserAgent: Boolean(subscription.user_agent),
+    appVersion: subscription.app_version,
+    serviceWorkerVersion: subscription.service_worker_version,
   });
   logPushServer('Supabase upsert payload', loggedRecord);
+
+  const rpcResult = await supabase
+    .rpc('upsert_push_subscription', { subscription_payload: row })
+    .single();
+
+  if (!rpcResult.error) {
+    logPushServer('push subscription rpc upsert success', {
+      endpoint: rpcResult.data?.endpoint || subscription.endpoint,
+      deviceId: rpcResult.data?.device_id || '',
+      platform: rpcResult.data?.platform || '',
+      hasUserAgent: Boolean(rpcResult.data?.user_agent),
+      appVersion: rpcResult.data?.app_version || '',
+      serviceWorkerVersion: rpcResult.data?.service_worker_version || '',
+      updatedAt: rpcResult.data?.updated_at || now,
+      metadata: getPushSubscriptionMetadataStatus(rpcResult.data),
+    });
+    return rpcResult.data;
+  }
+
+  if (!isMissingRpcError(rpcResult.error)) {
+    console.error('[PushNotifications] push subscription rpc upsert failure:', {
+      endpoint: subscription.endpoint,
+      deviceId: subscription.device_id,
+      platform: subscription.platform,
+      errorCode: rpcResult.error.code,
+      errorMessage: rpcResult.error.message,
+    });
+
+    if (MISSING_COLUMN_CODES.has(rpcResult.error.code)) {
+      const schemaError = new Error('push_subscriptions table is missing metadata columns. Apply supabase-schema.sql, then resubscribe this device.');
+      schemaError.code = rpcResult.error.code;
+      schemaError.cause = rpcResult.error;
+      throw schemaError;
+    }
+
+    throw rpcResult.error;
+  }
+
+  logPushServer('push subscription rpc unavailable; falling back to direct table upsert', {
+    errorCode: rpcResult.error.code,
+    errorMessage: rpcResult.error.message,
+  });
 
   const upsertResult = await supabase
     .from('push_subscriptions')
@@ -360,6 +455,8 @@ export async function upsertPushSubscription(supabase, subscription, { selectRes
     deviceId: upsertResult.data?.device_id || '',
     platform: upsertResult.data?.platform || '',
     hasUserAgent: Boolean(upsertResult.data?.user_agent),
+    appVersion: upsertResult.data?.app_version || '',
+    serviceWorkerVersion: upsertResult.data?.service_worker_version || '',
     updatedAt: upsertResult.data?.updated_at || now,
     metadata: getPushSubscriptionMetadataStatus(upsertResult.data),
   });
@@ -370,6 +467,8 @@ export async function upsertPushSubscription(supabase, subscription, { selectRes
       device_id: subscription.device_id,
       platform: subscription.platform,
       user_agent: subscription.user_agent,
+      app_version: subscription.app_version,
+      service_worker_version: subscription.service_worker_version,
       is_active: true,
       last_seen_at: now,
       updated_at: now,
@@ -381,7 +480,7 @@ export async function upsertPushSubscription(supabase, subscription, { selectRes
     .from('push_subscriptions')
     .update(updateRecord)
     .eq('endpoint', endpoint)
-    .select('endpoint,device_id,platform,user_agent,is_active,last_seen_at,updated_at')
+    .select('endpoint,device_id,platform,user_agent,app_version,service_worker_version,is_active,last_seen_at,updated_at')
     .single();
 
   if (updateResult.error) {
@@ -408,6 +507,8 @@ export async function upsertPushSubscription(supabase, subscription, { selectRes
     deviceId: updateResult.data?.device_id || '',
     platform: updateResult.data?.platform || '',
     hasUserAgent: Boolean(updateResult.data?.user_agent),
+    appVersion: updateResult.data?.app_version || '',
+    serviceWorkerVersion: updateResult.data?.service_worker_version || '',
     updatedAt: updateResult.data?.updated_at || now,
     metadata: getPushSubscriptionMetadataStatus(updateResult.data),
   });
@@ -418,9 +519,42 @@ export async function upsertPushSubscription(supabase, subscription, { selectRes
 export async function verifyPushSubscriptionSaved(supabase, endpoint) {
   logPushServer('push subscription verification start', { endpoint });
 
+  const rpcResult = await supabase
+    .rpc('get_push_subscription_by_endpoint', { subscription_endpoint: endpoint })
+    .maybeSingle();
+
+  if (!rpcResult.error) {
+    logPushServer('push subscription rpc verification success', {
+      endpoint,
+      saved: Boolean(rpcResult.data?.endpoint),
+      deviceId: rpcResult.data?.device_id || '',
+      platform: rpcResult.data?.platform || '',
+      hasUserAgent: Boolean(rpcResult.data?.user_agent),
+      appVersion: rpcResult.data?.app_version || '',
+      serviceWorkerVersion: rpcResult.data?.service_worker_version || '',
+      updatedAt: rpcResult.data?.updated_at || null,
+      metadata: getPushSubscriptionMetadataStatus(rpcResult.data),
+    });
+    return rpcResult.data;
+  }
+
+  if (!isMissingRpcError(rpcResult.error)) {
+    console.error('[PushNotifications] push subscription rpc verification failure:', {
+      endpoint,
+      errorCode: rpcResult.error.code,
+      errorMessage: rpcResult.error.message,
+    });
+    throw rpcResult.error;
+  }
+
+  logPushServer('push subscription rpc verification unavailable; falling back to direct table select', {
+    errorCode: rpcResult.error.code,
+    errorMessage: rpcResult.error.message,
+  });
+
   const { data, error } = await supabase
     .from('push_subscriptions')
-    .select('endpoint,is_active,last_seen_at,updated_at,device_id,platform,user_agent')
+    .select('endpoint,is_active,last_seen_at,updated_at,device_id,platform,user_agent,app_version,service_worker_version')
     .eq('endpoint', endpoint)
     .maybeSingle();
 
@@ -439,6 +573,8 @@ export async function verifyPushSubscriptionSaved(supabase, endpoint) {
     deviceId: data?.device_id || '',
     platform: data?.platform || '',
     hasUserAgent: Boolean(data?.user_agent),
+    appVersion: data?.app_version || '',
+    serviceWorkerVersion: data?.service_worker_version || '',
     updatedAt: data?.updated_at || null,
     metadata: getPushSubscriptionMetadataStatus(data),
   });

@@ -8,8 +8,8 @@ import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from 'workbox-strategi
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 import { ExpirationPlugin } from 'workbox-expiration';
 
-const SW_VERSION = typeof __APP_BUILD_VERSION__ === 'string' ? __APP_BUILD_VERSION__ : 'sw-2026-05-13-push-metadata-save-fix-2';
-const CACHE_NAME = 'lineup-manager-2026-05-13-push-metadata-save-fix-2';
+const SW_VERSION = typeof __APP_BUILD_VERSION__ === 'string' ? __APP_BUILD_VERSION__ : 'sw-2026-05-13-push-metadata-save-fix-4';
+const CACHE_NAME = `lineup-manager-${SW_VERSION}`;
 const BUILD_VERSION = SW_VERSION;
 const CACHE_PREFIX = 'lineup-manager';
 const PRECACHE_SUFFIX = `precache-${SW_VERSION}`;
@@ -394,12 +394,9 @@ precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 clientsClaim();
 
-// Activate a freshly deployed service worker as soon as the browser discovers it.
-// This helps installed PWAs move off an old cached shell without waiting for the
-// user to manually close every app window.
 self.addEventListener('install', (event) => {
   console.log('[PWA] service worker installed', { buildVersion: BUILD_VERSION });
-  event.waitUntil(self.skipWaiting());
+  event.waitUntil(Promise.resolve());
 });
 
 const appShellHandler = createHandlerBoundToURL('index.html');
@@ -449,17 +446,6 @@ self.addEventListener('activate', (event) => {
         activeCaches: [PRECACHE_SUFFIX, RUNTIME_SUFFIX, APP_SHELL_CACHE, STATIC_ASSET_CACHE, IMAGE_CACHE],
       });
       await self.clients.claim();
-
-      if (!IS_DEV_BUILD && cachesToDelete.length && self.clients.matchAll) {
-        const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-        await Promise.all(clientList.map((client) => {
-          if (!client.url || !client.navigate) return Promise.resolve();
-          const clientUrl = new URL(client.url);
-          if (clientUrl.origin !== self.location.origin) return Promise.resolve();
-          console.log('[PWA] refreshing client after service worker update', { url: client.url, buildVersion: BUILD_VERSION });
-          return client.navigate(client.url);
-        }));
-      }
     })()
   );
 });

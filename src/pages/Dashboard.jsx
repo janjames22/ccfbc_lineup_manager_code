@@ -1,35 +1,24 @@
 import { CalendarPlus, Library, Music2, Monitor, QrCode } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import SongCard from '../components/SongCard';
 import LoadingScreen from '../components/LoadingScreen';
-import { getSongs, getUpcomingLineup } from '../utils/storage';
+import { useLineups } from '../hooks/useLineups';
+import { useOfflineItems } from '../hooks/useOfflineItems';
+import { useSongs } from '../hooks/useSongs';
 
 export default function Dashboard({ onShareApp }) {
-  const [songs, setSongs] = useState([]);
-  const [upcoming, setUpcoming] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const [songsData, upcomingData] = await Promise.all([
-          getSongs(),
-          getUpcomingLineup()
-        ]);
-        setSongs(Array.isArray(songsData) ? songsData : []);
-        setUpcoming(upcomingData);
-      } catch (error) {
-        console.error("Failed to load songs:", error);
-        setSongs([]);
-        setUpcoming(null);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadData();
-  }, []);
+  const { songs, loading: songsLoading } = useSongs();
+  const { lineups, loading: lineupsLoading } = useLineups();
+  const offlineSongs = useOfflineItems('song');
+  const loading = songsLoading || lineupsLoading;
+  const today = new Date().toISOString().slice(0, 10);
+  const upcoming = useMemo(() => (
+    lineups
+      .filter((lineup) => lineup.date >= today)
+      .sort((a, b) => a.date.localeCompare(b.date))[0] || null
+  ), [lineups, today]);
 
   if (loading) return <LoadingScreen />;
 
@@ -129,7 +118,7 @@ export default function Dashboard({ onShareApp }) {
           <Link to="/songs" className="shrink-0 text-sm font-black text-blue-400 hover:text-blue-300">Open library</Link>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {recentSongs.map((song) => <SongCard key={song.id} song={song} />)}
+          {recentSongs.map((song) => <SongCard key={song.id} song={song} offline={offlineSongs} />)}
         </div>
       </section>
     </main>

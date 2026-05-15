@@ -1,7 +1,20 @@
 import { RefreshCw, X, Sparkles } from 'lucide-react';
 
-export default function UpdatePrompt({ onUpdate, onDismiss, versionInfo, updating = false }) {
+export default function UpdatePrompt({ message, onUpdate, onDismiss, status = 'found', versionInfo, updating = false }) {
   const versionLabel = versionInfo?.version || versionInfo?.serviceWorkerVersion || '';
+  const title = status === 'applying'
+    ? 'Applying update'
+    : status === 'reloading'
+      ? 'App updated'
+      : status === 'failed'
+        ? 'Update failed'
+        : 'Update available';
+  const body = message || (versionLabel ? `Ready to load ${versionLabel}.` : 'Tap to update and load the latest Line Up Manager build.');
+  const buttonLabel = status === 'applying'
+    ? 'Applying...'
+    : status === 'reloading'
+      ? 'Reloading...'
+      : 'Update now';
 
   return (
     <div className="fixed inset-x-0 top-0 z-[150] p-3 animate-slide-down pointer-events-none print:hidden sm:p-4">
@@ -17,10 +30,10 @@ export default function UpdatePrompt({ onUpdate, onDismiss, versionInfo, updatin
           <div className="flex-1 min-w-0">
             <h3 className="flex items-center gap-2 text-base font-black text-white tracking-tight">
               <Sparkles size={14} className="text-blue-400" />
-              New version available
+              {title}
             </h3>
-            <p className="truncate text-xs font-medium text-slate-400">
-              {versionLabel ? `Ready to load ${versionLabel}.` : 'Tap to update and load the latest Line Up Manager build.'}
+            <p className="text-xs font-medium text-slate-400">
+              {body}
             </p>
           </div>
 
@@ -30,7 +43,7 @@ export default function UpdatePrompt({ onUpdate, onDismiss, versionInfo, updatin
               disabled={updating}
               className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white shadow-lg shadow-blue-900/20 transition-all hover:bg-blue-500 active:scale-95"
             >
-              {updating ? 'Updating...' : 'Update Now'}
+              {buttonLabel}
             </button>
             <button
               onClick={onDismiss}

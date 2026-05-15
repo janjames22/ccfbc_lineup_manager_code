@@ -6,6 +6,7 @@ import {
   getSupabaseConfigStatus,
   logPushServer,
   MISSING_COLUMN_CODES,
+  verifyPushSubscriptionSaved,
 } from '../_push.js';
 
 export default async function handler(request, response) {
@@ -34,23 +35,11 @@ export default async function handler(request, response) {
 
   logPushServer('subscription exact endpoint check received', { endpoint });
 
-  let { data, error } = await supabase
-    .from('push_subscriptions')
-    .select('endpoint,is_active,last_seen_at,updated_at,device_id,platform,user_agent')
-    .eq('endpoint', endpoint)
-    .maybeSingle();
+  let data = null;
 
-  if (error && MISSING_COLUMN_CODES.has(error.code)) {
-    const fallback = await supabase
-      .from('push_subscriptions')
-      .select('endpoint,is_active,last_seen_at,updated_at')
-      .eq('endpoint', endpoint)
-      .maybeSingle();
-    data = fallback.data;
-    error = fallback.error;
-  }
-
-  if (error) {
+  try {
+    data = await verifyPushSubscriptionSaved(supabase, endpoint);
+  } catch (error) {
     console.error('[PushNotifications] push subscription verification failure:', {
       endpoint,
       errorCode: error.code,
@@ -71,6 +60,8 @@ export default async function handler(request, response) {
     deviceId: data?.device_id || '',
     platform: data?.platform || '',
     hasUserAgent: Boolean(data?.user_agent),
+    appVersion: data?.app_version || '',
+    serviceWorkerVersion: data?.service_worker_version || '',
     updatedAt: data?.updated_at || null,
     metadata: getPushSubscriptionMetadataStatus(data),
   });
@@ -88,6 +79,10 @@ export default async function handler(request, response) {
     endpoint: data?.endpoint || endpoint,
     deviceId: data?.device_id || '',
     platform: data?.platform || '',
+    appVersion: data?.app_version || '',
+    app_version: data?.app_version || '',
+    serviceWorkerVersion: data?.service_worker_version || '',
+    service_worker_version: data?.service_worker_version || '',
     userAgentSaved: Boolean(data?.user_agent),
     lastSeenAt: data?.last_seen_at || null,
     updatedAt: data?.updated_at || null,

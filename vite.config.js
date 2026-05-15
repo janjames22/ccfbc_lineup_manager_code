@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -17,11 +18,12 @@ function readVersionInfo() {
 }
 
 const VERSION_INFO = readVersionInfo();
-const APP_VERSION = VERSION_INFO.version || 'dev';
+const APP_VERSION = process.env.VITE_APP_VERSION || VERSION_INFO.version || 'dev';
 const BUILD_VERSION =
+  process.env.VITE_SERVICE_WORKER_VERSION ||
   VERSION_INFO.serviceWorkerVersion ||
   VERSION_INFO.version ||
-  globalThis.process?.env?.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) ||
+  process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) ||
   new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
 
 export default defineConfig({
@@ -37,7 +39,7 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'sw.js',
       manifestFilename: 'manifest.json',
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['logo.png', 'favicon.png', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png'],
       manifest: {
         name: 'Line Up Manager',

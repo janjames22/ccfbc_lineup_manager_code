@@ -141,6 +141,8 @@ export default function PhoneNotificationsButton() {
       setMessage([
         `Sent device_id: ${sent.device_id || sent.deviceId || 'missing'}`,
         `Sent platform: ${sent.platform || 'missing'}`,
+        `Sent app version: ${sent.app_version || sent.appVersion || 'missing'}`,
+        `Sent service worker version: ${sent.service_worker_version || sent.serviceWorkerVersion || 'missing'}`,
         `Server saved device_id: ${serverDeviceId || 'missing'}`,
         `Server saved platform: ${serverPlatform || 'missing'}`,
         `Saved in Supabase: ${saved ? 'Yes' : 'No'}`,
@@ -336,8 +338,12 @@ export default function PhoneNotificationsButton() {
           <DiagnosticRow label="Supabase device ID" value={subscriptionStatus?.serverDeviceId} tone={subscriptionStatus?.serverDeviceId ? 'good' : 'warn'} />
           <DiagnosticRow label="Supabase platform" value={subscriptionStatus?.serverPlatform} tone={subscriptionStatus?.serverPlatform ? 'good' : 'warn'} />
           <DiagnosticRow label="Supabase user agent" value={subscriptionStatus?.serverUserAgentSaved} tone={subscriptionStatus?.serverUserAgentSaved ? 'good' : 'warn'} />
+          <DiagnosticRow label="Supabase app version" value={subscriptionStatus?.serverAppVersion} tone={subscriptionStatus?.serverAppVersion ? 'good' : 'warn'} />
+          <DiagnosticRow label="Supabase SW version" value={subscriptionStatus?.serverServiceWorkerVersion} tone={subscriptionStatus?.serverServiceWorkerVersion ? 'good' : 'warn'} />
           <DiagnosticRow label="Last sent device_id" value={lastSent?.device_id} tone={lastSent?.device_id ? 'good' : 'warn'} />
           <DiagnosticRow label="Last sent platform" value={lastSent?.platform} tone={lastSent?.platform ? 'good' : 'warn'} />
+          <DiagnosticRow label="Last sent app version" value={lastSent?.app_version} tone={lastSent?.app_version ? 'good' : 'warn'} />
+          <DiagnosticRow label="Last sent SW version" value={lastSent?.service_worker_version} tone={lastSent?.service_worker_version ? 'good' : 'warn'} />
           <DiagnosticRow
             label="Last save verified"
             value={lastSaveResult?.error ? `Error: ${lastSaveResult.error}` : lastVerification ? Boolean(lastVerification.saved) : ''}

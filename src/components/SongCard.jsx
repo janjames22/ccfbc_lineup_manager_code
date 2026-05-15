@@ -1,8 +1,9 @@
 import { Eye, Monitor, Pencil } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatBpm } from '../utils/constants';
+import OfflineItemButton from './OfflineItemButton';
 
-export default function SongCard({ song }) {
+export default function SongCard({ offline, song }) {
   return (
     <article className="panel flex flex-col justify-between p-5 sm:p-6 h-full">
       <div>
@@ -34,6 +35,7 @@ export default function SongCard({ song }) {
         <Link to={`/songs/${song.id}/edit`} className="btn-secondary flex-1 sm:flex-none">
           <Pencil size={16} aria-hidden="true" /> Edit
         </Link>
+        {offline && <OfflineItemButton className="w-full pt-1" item={song} offline={offline} type="song" />}
       </div>
     </article>
   );

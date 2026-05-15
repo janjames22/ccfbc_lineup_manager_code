@@ -41,8 +41,43 @@ CREATE TABLE lineups (
 );
 
 -- ============================================
+-- REALTIME PUBLICATION
+-- ============================================
+-- Required for Supabase Realtime subscriptions used by the app.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime'
+    ) THEN
+        IF NOT EXISTS (
+            SELECT 1
+            FROM pg_publication_tables
+            WHERE pubname = 'supabase_realtime'
+              AND schemaname = 'public'
+              AND tablename = 'songs'
+        ) THEN
+            ALTER PUBLICATION supabase_realtime ADD TABLE public.songs;
+        END IF;
+
+        IF NOT EXISTS (
+            SELECT 1
+            FROM pg_publication_tables
+            WHERE pubname = 'supabase_realtime'
+              AND schemaname = 'public'
+              AND tablename = 'lineups'
+        ) THEN
+            ALTER PUBLICATION supabase_realtime ADD TABLE public.lineups;
+        END IF;
+    END IF;
+END $$;
+
+-- ============================================
 -- PUSH SUBSCRIPTIONS TABLE
 -- ============================================
+-- IMPORTANT:
+-- Run this SQL manually in the Supabase SQL Editor before redeploying.
+-- This fixes push subscription metadata saving for device_id, platform,
+-- user_agent, is_active, last_seen_at, app_version, and service_worker_version.
 CREATE TABLE IF NOT EXISTS public.push_subscriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     endpoint TEXT UNIQUE NOT NULL,
@@ -52,6 +87,8 @@ CREATE TABLE IF NOT EXISTS public.push_subscriptions (
     device_label TEXT,
     device_id TEXT,
     platform TEXT,
+    app_version TEXT,
+    service_worker_version TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     last_seen_at TIMESTAMPTZ,
@@ -63,13 +100,31 @@ ALTER TABLE public.push_subscriptions
     ADD COLUMN IF NOT EXISTS device_label TEXT,
     ADD COLUMN IF NOT EXISTS device_id TEXT,
     ADD COLUMN IF NOT EXISTS platform TEXT,
+    ADD COLUMN IF NOT EXISTS app_version TEXT,
+    ADD COLUMN IF NOT EXISTS service_worker_version TEXT,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW(),
     ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
 
 ALTER TABLE public.push_subscriptions
+    ALTER COLUMN created_at SET DEFAULT NOW(),
     ALTER COLUMN updated_at SET DEFAULT NOW(),
     ALTER COLUMN last_seen_at SET DEFAULT NOW(),
     ALTER COLUMN is_active SET DEFAULT TRUE;
+
+UPDATE public.push_subscriptions
+SET
+    created_at = COALESCE(created_at, NOW()),
+    updated_at = COALESCE(updated_at, NOW()),
+    last_seen_at = COALESCE(last_seen_at, updated_at, created_at, NOW()),
+    is_active = COALESCE(is_active, TRUE);
+
+ALTER TABLE public.push_subscriptions
+    ALTER COLUMN created_at SET NOT NULL,
+    ALTER COLUMN updated_at SET NOT NULL,
+    ALTER COLUMN last_seen_at SET NOT NULL,
+    ALTER COLUMN is_active SET NOT NULL;
 
 DO $$
 BEGIN
@@ -86,6 +141,9 @@ BEGIN
 
 END $$;
 
+CREATE UNIQUE INDEX IF NOT EXISTS push_subscriptions_endpoint_key
+ON public.push_subscriptions(endpoint);
+
 ALTER TABLE public.push_subscriptions
     DROP CONSTRAINT IF EXISTS push_subscriptions_required_fields_check;
 
@@ -97,6 +155,8 @@ ALTER TABLE public.push_subscriptions
         AND char_length(auth) BETWEEN 10 AND 256
         AND (device_id IS NULL OR char_length(device_id) <= 200)
         AND (device_label IS NULL OR char_length(device_label) <= 200)
+        AND (app_version IS NULL OR char_length(app_version) <= 200)
+        AND (service_worker_version IS NULL OR char_length(service_worker_version) <= 200)
         AND (
             platform IS NULL
             OR platform IN (
@@ -111,6 +171,145 @@ ALTER TABLE public.push_subscriptions
             )
         )
     ) NOT VALID;
+
+DROP FUNCTION IF EXISTS public.upsert_push_subscription(JSONB);
+CREATE FUNCTION public.upsert_push_subscription(subscription_payload JSONB)
+RETURNS TABLE (
+    endpoint TEXT,
+    device_id TEXT,
+    platform TEXT,
+    user_agent TEXT,
+    app_version TEXT,
+    service_worker_version TEXT,
+    is_active BOOLEAN,
+    last_seen_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    payload_endpoint TEXT := NULLIF(BTRIM(subscription_payload->>'endpoint'), '');
+    payload_p256dh TEXT := NULLIF(BTRIM(subscription_payload->>'p256dh'), '');
+    payload_auth TEXT := NULLIF(BTRIM(subscription_payload->>'auth'), '');
+    payload_device_id TEXT := NULLIF(BTRIM(subscription_payload->>'device_id'), '');
+    payload_platform TEXT := NULLIF(BTRIM(subscription_payload->>'platform'), '');
+    payload_user_agent TEXT := NULLIF(subscription_payload->>'user_agent', '');
+    payload_device_label TEXT := NULLIF(subscription_payload->>'device_label', '');
+    payload_app_version TEXT := NULLIF(BTRIM(subscription_payload->>'app_version'), '');
+    payload_service_worker_version TEXT := NULLIF(BTRIM(subscription_payload->>'service_worker_version'), '');
+    touched_at TIMESTAMPTZ := NOW();
+BEGIN
+    IF payload_endpoint IS NULL OR payload_p256dh IS NULL OR payload_auth IS NULL THEN
+        RAISE EXCEPTION 'Missing push subscription endpoint or keys';
+    END IF;
+
+    IF payload_device_id IS NULL OR payload_platform IS NULL OR payload_user_agent IS NULL THEN
+        RAISE EXCEPTION 'Missing push subscription metadata';
+    END IF;
+
+    IF payload_app_version IS NULL OR payload_service_worker_version IS NULL THEN
+        RAISE EXCEPTION 'Missing push subscription app or service worker version';
+    END IF;
+
+    RETURN QUERY
+    INSERT INTO public.push_subscriptions AS ps (
+        endpoint,
+        p256dh,
+        auth,
+        user_agent,
+        device_label,
+        device_id,
+        platform,
+        app_version,
+        service_worker_version,
+        is_active,
+        last_seen_at,
+        updated_at
+    )
+    VALUES (
+        payload_endpoint,
+        payload_p256dh,
+        payload_auth,
+        payload_user_agent,
+        payload_device_label,
+        payload_device_id,
+        payload_platform,
+        payload_app_version,
+        payload_service_worker_version,
+        TRUE,
+        touched_at,
+        touched_at
+    )
+    ON CONFLICT (endpoint)
+    DO UPDATE SET
+        p256dh = EXCLUDED.p256dh,
+        auth = EXCLUDED.auth,
+        user_agent = EXCLUDED.user_agent,
+        device_label = EXCLUDED.device_label,
+        device_id = EXCLUDED.device_id,
+        platform = EXCLUDED.platform,
+        app_version = EXCLUDED.app_version,
+        service_worker_version = EXCLUDED.service_worker_version,
+        is_active = TRUE,
+        last_seen_at = touched_at,
+        updated_at = touched_at
+    RETURNING
+        ps.endpoint,
+        ps.device_id,
+        ps.platform,
+        ps.user_agent,
+        ps.app_version,
+        ps.service_worker_version,
+        ps.is_active,
+        ps.last_seen_at,
+        ps.updated_at;
+END;
+$$;
+
+DROP FUNCTION IF EXISTS public.get_push_subscription_by_endpoint(TEXT);
+CREATE FUNCTION public.get_push_subscription_by_endpoint(subscription_endpoint TEXT)
+RETURNS TABLE (
+    endpoint TEXT,
+    device_id TEXT,
+    platform TEXT,
+    user_agent TEXT,
+    app_version TEXT,
+    service_worker_version TEXT,
+    is_active BOOLEAN,
+    last_seen_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        ps.endpoint,
+        ps.device_id,
+        ps.platform,
+        ps.user_agent,
+        ps.app_version,
+        ps.service_worker_version,
+        ps.is_active,
+        ps.last_seen_at,
+        ps.updated_at
+    FROM public.push_subscriptions AS ps
+    WHERE ps.endpoint = subscription_endpoint
+    LIMIT 1;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.upsert_push_subscription(JSONB) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_push_subscription_by_endpoint(TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.upsert_push_subscription(JSONB) FROM anon, authenticated;
+REVOKE ALL ON FUNCTION public.get_push_subscription_by_endpoint(TEXT) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.upsert_push_subscription(JSONB) TO service_role;
+GRANT EXECUTE ON FUNCTION public.get_push_subscription_by_endpoint(TEXT) TO service_role;
+NOTIFY pgrst, 'reload schema';
 
 -- ============================================
 -- LINEUP NOTIFICATIONS TABLE
@@ -270,6 +469,9 @@ CREATE POLICY "Allow public delete on lineups" ON lineups
 -- ============================================
 -- PUSH SUBSCRIPTION POLICIES
 -- ============================================
+DROP POLICY IF EXISTS "Allow public read push subscriptions" ON public.push_subscriptions;
+DROP POLICY IF EXISTS "Allow public insert push subscriptions" ON public.push_subscriptions;
+DROP POLICY IF EXISTS "Allow public update push subscriptions" ON public.push_subscriptions;
 DROP POLICY IF EXISTS "Allow public insert on push subscriptions" ON public.push_subscriptions;
 DROP POLICY IF EXISTS "Allow public update on push subscriptions" ON public.push_subscriptions;
 DROP POLICY IF EXISTS "Allow public push subscription insert" ON public.push_subscriptions;
@@ -277,9 +479,21 @@ DROP POLICY IF EXISTS "Allow public push subscription update" ON public.push_sub
 DROP POLICY IF EXISTS "Allow safe public push subscription insert" ON public.push_subscriptions;
 DROP POLICY IF EXISTS "Allow safe public push subscription refresh" ON public.push_subscriptions;
 
--- The frontend must save subscriptions through /api/push/subscribe. No public
--- INSERT/UPDATE/SELECT policy is added for push_subscriptions; server routes use
--- SUPABASE_SERVICE_ROLE_KEY only, which bypasses RLS without exposing the key.
+CREATE POLICY "Allow public read push subscriptions"
+ON public.push_subscriptions
+FOR SELECT
+USING (true);
+
+CREATE POLICY "Allow public insert push subscriptions"
+ON public.push_subscriptions
+FOR INSERT
+WITH CHECK (true);
+
+CREATE POLICY "Allow public update push subscriptions"
+ON public.push_subscriptions
+FOR UPDATE
+USING (true)
+WITH CHECK (true);
 
 -- ============================================
 -- LINEUP NOTIFICATION POLICIES

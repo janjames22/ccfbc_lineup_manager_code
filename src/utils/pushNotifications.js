@@ -205,6 +205,8 @@ async function saveSubscriptionToServer(subscription) {
   const platform = getPushPlatform();
   const user_agent = navigator.userAgent || '';
   const device_label = getDeviceLabel();
+  const app_version = APP_VERSION;
+  const service_worker_version = BUILD_VERSION;
   const payload = {
     endpoint,
     p256dh,
@@ -220,6 +222,23 @@ async function saveSubscriptionToServer(subscription) {
     userAgent: user_agent,
     device_label,
     deviceLabel: device_label,
+    app_version,
+    appVersion: app_version,
+    service_worker_version,
+    serviceWorkerVersion: service_worker_version,
+    metadata: {
+      device_id,
+      deviceId: device_id,
+      platform,
+      user_agent,
+      userAgent: user_agent,
+      device_label,
+      deviceLabel: device_label,
+      app_version,
+      appVersion: app_version,
+      service_worker_version,
+      serviceWorkerVersion: service_worker_version,
+    },
     subscription: {
       endpoint,
       p256dh,
@@ -235,6 +254,10 @@ async function saveSubscriptionToServer(subscription) {
       userAgent: user_agent,
       device_label,
       deviceLabel: device_label,
+      app_version,
+      appVersion: app_version,
+      service_worker_version,
+      serviceWorkerVersion: service_worker_version,
     },
   };
   const loggedPayload = {
@@ -252,6 +275,23 @@ async function saveSubscriptionToServer(subscription) {
     userAgent: user_agent,
     device_label,
     deviceLabel: device_label,
+    app_version,
+    appVersion: app_version,
+    service_worker_version,
+    serviceWorkerVersion: service_worker_version,
+    metadata: {
+      device_id,
+      deviceId: device_id,
+      platform,
+      user_agent,
+      userAgent: user_agent,
+      device_label,
+      deviceLabel: device_label,
+      app_version,
+      appVersion: app_version,
+      service_worker_version,
+      serviceWorkerVersion: service_worker_version,
+    },
     subscription: {
       endpoint,
       p256dh: p256dh ? '[present]' : '[missing]',
@@ -267,6 +307,10 @@ async function saveSubscriptionToServer(subscription) {
       userAgent: user_agent,
       device_label,
       deviceLabel: device_label,
+      app_version,
+      appVersion: app_version,
+      service_worker_version,
+      serviceWorkerVersion: service_worker_version,
     },
   };
 
@@ -305,13 +349,19 @@ async function saveSubscriptionToServer(subscription) {
   debugPush('API save response', result);
   const verifiedDeviceId = result?.verification?.device_id || result?.upserted?.device_id || result?.device_id || result?.deviceId || '';
   const verifiedPlatform = result?.verification?.platform || result?.upserted?.platform || result?.platform || '';
-  if (!verifiedDeviceId || !verifiedPlatform) {
+  const verifiedAppVersion = result?.verification?.app_version || result?.upserted?.app_version || result?.app_version || result?.appVersion || '';
+  const verifiedServiceWorkerVersion = result?.verification?.service_worker_version || result?.upserted?.service_worker_version || result?.service_worker_version || result?.serviceWorkerVersion || '';
+  if (!verifiedDeviceId || !verifiedPlatform || !verifiedAppVersion || !verifiedServiceWorkerVersion) {
     console.warn('[PushNotifications] Supabase save response did not verify metadata:', {
       endpoint,
       sentDeviceId: device_id,
       sentPlatform: platform,
+      sentAppVersion: app_version,
+      sentServiceWorkerVersion: service_worker_version,
       verifiedDeviceId,
       verifiedPlatform,
+      verifiedAppVersion,
+      verifiedServiceWorkerVersion,
       result,
     });
   }
@@ -323,6 +373,10 @@ async function saveSubscriptionToServer(subscription) {
       device_id,
       deviceId: device_id,
       platform,
+      app_version,
+      appVersion: app_version,
+      service_worker_version,
+      serviceWorkerVersion: service_worker_version,
       user_agent_saved: Boolean(user_agent),
       userAgentSaved: Boolean(user_agent),
     },
@@ -538,7 +592,7 @@ export async function subscribeToLineupPushNotifications({ forceNew = false } = 
 }
 
 export async function resubscribeToLineupPushNotifications() {
-  const result = await subscribeToLineupPushNotifications();
+  const result = await subscribeToLineupPushNotifications({ forceNew: true });
   return {
     ...result,
     message: 'Device resubscribed for phone notifications.',
@@ -743,6 +797,8 @@ export async function getNotificationDiagnostics({ refreshServer = false, ensure
       serverDeviceId: serverSubscription?.deviceId || serverSubscription?.device_id || '',
       serverPlatform: serverSubscription?.platform || '',
       serverUserAgentSaved: Boolean(serverSubscription?.userAgentSaved || serverSubscription?.user_agent_saved),
+      serverAppVersion: serverSubscription?.appVersion || serverSubscription?.app_version || '',
+      serverServiceWorkerVersion: serverSubscription?.serviceWorkerVersion || serverSubscription?.service_worker_version || '',
       serverLastSeenAt: serverSubscription?.lastSeenAt || null,
       serverUpdatedAt: serverSubscription?.updatedAt || null,
       serverError: serverSubscription?.error || '',

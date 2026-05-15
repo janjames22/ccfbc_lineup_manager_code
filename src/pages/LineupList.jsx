@@ -1,32 +1,17 @@
 import { CalendarPlus, Eye, Pencil, Printer } from 'lucide-react';
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
 import PageHeader from '../components/PageHeader';
 import LoadingScreen from '../components/LoadingScreen';
-import DownloadOfflineButton from '../components/DownloadOfflineButton';
-import { getLineups } from '../utils/storage';
+import DataRefreshStatus from '../components/DataRefreshStatus';
+import OfflineItemButton from '../components/OfflineItemButton';
+import { useLineups } from '../hooks/useLineups';
+import { useOfflineItems } from '../hooks/useOfflineItems';
+import { createOfflineLineupPayload } from '../utils/storage';
 
 export default function LineupList() {
-  const [lineups, setLineups] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    async function loadLineups() {
-      try {
-        const data = await getLineups();
-        setLineups(Array.isArray(data) ? data : []);
-      } catch (error) {
-        console.error('Failed to load lineups:', error);
-        setError('Unable to load lineups. Please try again.');
-        setLineups([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadLineups();
-  }, []);
+  const { error, lastUpdatedAt, lineups, loading, realtimeStatus, refreshing } = useLineups();
+  const offlineLineups = useOfflineItems('lineup');
   
   if (loading) return <LoadingScreen />;
 
@@ -38,13 +23,13 @@ export default function LineupList() {
         description="Create, review, monitor, and print weekly worship lineups."
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-            <DownloadOfflineButton onDownload={async () => { await getLineups(); }} label="Sync Lineups" syncKey="lineups" />
+            <DataRefreshStatus lastUpdatedAt={lastUpdatedAt} refreshing={refreshing} status={realtimeStatus} />
             <Link className="btn-primary" to="/lineups/new"><CalendarPlus size={18} aria-hidden="true" /> Create Lineup</Link>
           </div>
         }
       />
 
-      {error && <p className="mb-4 text-sm font-semibold text-red-700">{error}</p>}
+      {error && <p className="mb-4 text-sm font-semibold text-red-300">{error}</p>}
 
       {lineups.length ? (
         <div className="grid gap-4">
@@ -60,6 +45,12 @@ export default function LineupList() {
                   <Link className="btn-secondary" to={`/lineups/${lineup.id}`}><Eye size={16} aria-hidden="true" /> View</Link>
                   <Link className="btn-secondary" to={`/lineups/${lineup.id}/edit`}><Pencil size={16} aria-hidden="true" /> Edit</Link>
                   <Link className="btn-secondary" to={`/lineups/${lineup.id}/print`}><Printer size={16} aria-hidden="true" /> Print</Link>
+                  <OfflineItemButton
+                    item={lineup}
+                    offline={offlineLineups}
+                    type="lineup"
+                    getSavePayload={createOfflineLineupPayload}
+                  />
                 </div>
               </div>
             </article>

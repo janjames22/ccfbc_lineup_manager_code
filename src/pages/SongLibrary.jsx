@@ -1,38 +1,22 @@
 import { Plus, Search } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
 import PageHeader from '../components/PageHeader';
 import SongCard from '../components/SongCard';
 import LoadingScreen from '../components/LoadingScreen';
-import DownloadOfflineButton from '../components/DownloadOfflineButton';
+import DataRefreshStatus from '../components/DataRefreshStatus';
+import { useOfflineItems } from '../hooks/useOfflineItems';
+import { useSongs } from '../hooks/useSongs';
 import { KEYS } from '../utils/constants';
-import { getSongs } from '../utils/storage';
 
 export default function SongLibrary() {
-  const [songs, setSongs] = useState([]);
   const [query, setQuery] = useState('');
   const [keyFilter, setKeyFilter] = useState('');
   const [category, setCategory] = useState('');
   const [language, setLanguage] = useState('');
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function loadSongs() {
-      try {
-        console.log('SongLibrary: Loading songs...');
-        const data = await getSongs();
-        console.log('SongLibrary: Songs loaded:', data);
-        setSongs(Array.isArray(data) ? data : []);
-      } catch (error) {
-        console.error("Failed to load songs:", error);
-        setSongs([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadSongs();
-  }, []);
+  const { error, lastUpdatedAt, loading, realtimeStatus, refreshing, songs } = useSongs();
+  const offlineSongs = useOfflineItems('song');
 
   const categories = useMemo(() => [...new Set(songs.map((song) => song.category).filter(Boolean))], [songs]);
   const languages = useMemo(() => [...new Set(songs.map((song) => song.language).filter(Boolean))], [songs]);
@@ -57,11 +41,13 @@ export default function SongLibrary() {
         description="Search by title, key, category, or language."
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-            <DownloadOfflineButton onDownload={async () => { await getSongs(); }} label="Sync Songs" syncKey="songs" />
+            <DataRefreshStatus lastUpdatedAt={lastUpdatedAt} refreshing={refreshing} status={realtimeStatus} />
             <Link className="btn-primary" to="/songs/new"><Plus size={18} aria-hidden="true" /> Add Song</Link>
           </div>
         }
       />
+
+      {error && <p className="mb-4 text-sm font-semibold text-red-300">{error}</p>}
 
       <section className="panel mb-6">
         <div className="grid gap-3 md:grid-cols-[1.5fr_0.7fr_0.7fr_0.7fr]">
@@ -87,7 +73,7 @@ export default function SongLibrary() {
 
       {filteredSongs.length ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredSongs.map((song) => <SongCard key={song.id} song={song} />)}
+          {filteredSongs.map((song) => <SongCard key={song.id} song={song} offline={offlineSongs} />)}
         </div>
       ) : (
         <EmptyState title="No songs found" message="Try a different search or add the first song for your team." action={<Link className="btn-primary" to="/songs/new">Add Song</Link>} />

@@ -1,5 +1,6 @@
 {
-  "version": "2026.05.13-push-metadata-save-fix-2",
-  "buildTime": "2026-05-13T00:00:00Z",
-  "serviceWorkerVersion": "sw-2026-05-13-push-metadata-save-fix-2"
+  "version": "1.0.0-20260515105553",
+  "buildTime": "2026-05-15T10:55:53.947Z",
+  "serviceWorkerVersion": "sw-1.0.0-20260515105553",
+  "commit": ""
 }

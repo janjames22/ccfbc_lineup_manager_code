@@ -4,9 +4,11 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import LoadingScreen from '../components/LoadingScreen';
 import ChordChartViewer from '../components/ChordChartViewer';
+import OfflineItemButton from '../components/OfflineItemButton';
 import { formatBpm } from '../utils/constants';
 import { deleteSong, getSongById } from '../utils/storage';
 import { useToast } from '../hooks/useToast';
+import { useOfflineItems } from '../hooks/useOfflineItems';
 import { getTransposedKey, transposeChords } from '../utils/transposeChords';
 
 export default function SongDetail() {
@@ -16,6 +18,7 @@ export default function SongDetail() {
   const [transposeAmount, setTransposeAmount] = useState(0);
   const [loading, setLoading] = useState(true);
   const { showToast } = useToast();
+  const offlineSongs = useOfflineItems('song');
 
   useEffect(() => {
     async function loadSong() {
@@ -75,6 +78,7 @@ export default function SongDetail() {
             <Link className="btn-secondary" to={`/lyrics-monitor/${song.id}`}><Monitor size={18} aria-hidden="true" /> Monitor</Link>
             <Link className="btn-secondary" to={`/songs/${song.id}/edit`}><Pencil size={18} aria-hidden="true" /> Edit</Link>
             <button className="btn-danger" type="button" onClick={remove}><Trash2 size={18} aria-hidden="true" /> Delete</button>
+            <OfflineItemButton item={song} offline={offlineSongs} type="song" />
           </>
         }
       />
