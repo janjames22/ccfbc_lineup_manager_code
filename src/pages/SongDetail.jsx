@@ -1,6 +1,6 @@
 import { ArrowLeft, Monitor, Pencil, Trash2, Youtube } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import LoadingScreen from '../components/LoadingScreen';
 import ChordChartViewer from '../components/ChordChartViewer';
@@ -14,6 +14,9 @@ import { getTransposedKey, transposeChords } from '../utils/transposeChords';
 export default function SongDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const fromSource = searchParams.get('from');
+  const lineupId = searchParams.get('lineupId');
   const [song, setSong] = useState(null);
   const [transposeAmount, setTransposeAmount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -69,6 +72,11 @@ export default function SongDetail() {
         description={song.artist || 'No artist listed'}
         actions={
           <>
+            {fromSource === 'lineup' && lineupId && (
+              <Link className="btn-secondary" to={`/lineups/${lineupId}`}>
+                <ArrowLeft size={18} aria-hidden="true" /> Return to Lineup
+              </Link>
+            )}
             <Link className="btn-secondary" to="/songs"><ArrowLeft size={18} aria-hidden="true" /> Songs</Link>
             {song.youtubeLink && (
               <a className="btn-secondary text-red-600 hover:border-red-200 hover:bg-red-50" href={song.youtubeLink} target="_blank" rel="noopener noreferrer">

@@ -152,7 +152,7 @@ export default function LineupView() {
                     
                     <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-2">
                       {song && (
-                        <Link to={`/songs/${song.id}`} className="btn-secondary w-full !py-2 !px-3.5 text-xs font-black uppercase tracking-wider sm:w-auto" title="Song Details">
+                        <Link to={`/songs/${song.id}?from=lineup&lineupId=${lineup.id}`} className="btn-secondary w-full !py-2 !px-3.5 text-xs font-black uppercase tracking-wider sm:w-auto" title="Song Details">
                           <BookOpen size={14} /> Details
                         </Link>
                       )}
